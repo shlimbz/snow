@@ -394,7 +394,7 @@ function setMute(m){SFX.muted=m;SET.sound=!m;if(SFX.master)SFX.master.gain.value
 const MODES={
   menu:{halfW:38,kickers:false,rank:false,recover:true,auto:true},
   trick:{halfW:30,kickers:true,rank:true,recover:true,course:true,slope:28,pitch:11,startSpeed:25,maxSpeed:54,hardLanding:15,dragTuck:.0011,fovBoost:.22},   // 22°→28°, 최고 144→194km/h
-  free:{halfW:44,kickers:false,rank:false,recover:true,free:true,slope:23,pitch:6,startSpeed:18,maxSpeed:42,hardLanding:14,pcx:[36,12],dragTuck:.0012,fovBoost:.2},
+  free:{halfW:44,kickers:false,rank:false,recover:true,free:true,slope:23,pitch:7.5,startSpeed:18,maxSpeed:42,hardLanding:14,pcx:[36,12],dragTuck:.0012,fovBoost:.08},
   tutorial:{halfW:34,kickers:false,rank:false,recover:true}};
 const BASE={slope:22,pitch:9,startSpeed:20,maxSpeed:44,hardLanding:12,pcx:[30,10],dragTuck:.0013,fovBoost:.16};
 function applyTerrain(){TREEC.clear();CFG.slopeDeg=M.slope||BASE.slope;TAN=Math.tan(CFG.slopeDeg*DEG);CFG.pitchDeg=M.pitch||BASE.pitch;CFG.startSpeed=M.startSpeed||BASE.startSpeed;
@@ -893,8 +893,10 @@ function updateCamera(dt){
   const gyU=groundY(s.z,s.x),b0=baseY(s.z);
   const ref=s.air?gyU+(s.py-gyU)*.72:gyU;
   s.camDelta=lerp(s.camDelta||0,ref-b0,1-Math.exp(-dt*6));
-  cam.off=lerp(cam.off,CFG.camBack*baseSlope(s.z)+CFG.camH,1-Math.exp(-dt*6));cam.y=b0+s.camDelta+cam.off;   // 지면은 즉시 추종, 오프셋만 부드럽게
+  cam.off=lerp(cam.off,CFG.camBack*lerp(TAN,baseSlope(s.z),.35)+CFG.camH,1-Math.exp(-dt*6));cam.y=b0+s.camDelta+cam.off-(cam.gd||0);   // 국소 경사는 35%만 반영 → 급경사·완경사에서 캐릭터 화면 위치가 크게 출렁이지 않음(아래로 잘림 방지)
   cam.yaw=lerp(cam.yaw,s.heading*.32,1-Math.exp(-dt*3));cam.yawT=Math.tan(cam.yaw);
+  // 화면 아래 잘림 방지: 보드 아래 끝이 화면 밖으로 나가려 하면 카메라를 살짝 낮춰 캐릭터를 위로 올림 (최대 1.2m)
+  {const p=proj(s.x,gyU,s.z);if(p){const ex=p.y+80*p.s*CFG.rigScale-(H-14);cam.gd=clamp((cam.gd||0)+ex/p.s*Math.min(1,dt*8),0,1.2)}}
   cam.roll=lerp(cam.roll,-s.edge*.09*DEG*(s.air?0:1),1-Math.exp(-dt*4));
   const sp=clamp((s.v-12)/(CFG.maxSpeed-12),0,1);cam.f=lerp(cam.f,CFG.focal*(HUD.portrait?.84:1)*(1-CFG.fovBoost*sp*(1+.25*(s.manualTuck||0))),1-Math.exp(-dt*2));   // 세로 화면은 좌우가 잘리므로 시야를 넓힘   // 고속에서 FOV 확장
 }
@@ -954,8 +956,6 @@ function skyStrip(){const k=ENV.top.join()+ENV.mid.join()+ENV.hor.join();if(SKY.
   if(!SKY.c){SKY.c=document.createElement('canvas');SKY.c.width=1;SKY.c.height=128}const g=SKY.c.getContext('2d'),gr=g.createLinearGradient(0,0,0,128);
   gr.addColorStop(0,rgb(ENV.top));gr.addColorStop(.62,rgb(ENV.mid));gr.addColorStop(1,rgb(ENV.hor));g.fillStyle=gr;g.fillRect(0,0,1,128);return SKY.c}
 const mkCanvas=(w,h)=>{const c=document.createElement('canvas');c.width=Math.max(1,Math.ceil(w));c.height=Math.max(1,Math.ceil(h));return c};
-// 밤하늘 별 (한 번만 그림)
-const STARS=(()=>{const c=mkCanvas(1400,300),g=c.getContext('2d');for(let i=0;i<170;i++){const x=hash(i,201)*1400,y=Math.pow(hash(i,202),1.6)*300,r=.5+hash(i,203)*1.3;g.globalAlpha=.35+hash(i,204)*.65;g.fillStyle=hash(i,205)<.15?'#ffe9c4':'#fff';g.fillRect(x,y,r,r)}return c})();
 
 // =====================================================================
 //  하늘 연출 (코드로 그림): 구름 · 오로라 · 별똥별 · 새 떼 · 열기구 · 하루 동안 움직이는 해와 달
@@ -970,18 +970,63 @@ const CLOUDS=[...Array(9)].map((_,i)=>({x:hash(i,301)*1800,sp:3+hash(i,302)*5,v:
 function drawClouds(hy,shift,low){const t=game.time,a=(low?.5:.85)*(1-.85*ENV.star);if(a<.03)return;ctx.globalAlpha=a;
   for(const c of CLOUDS){if(c.low!==low)continue;const S=CLOUD_SPR[c.v],w=S.width*c.s,h=S.height*c.s,x=((c.x+t*c.sp-shift*(low?.7:.5))%1900+1900)%1900-280,y=low?hy-30-c.y*30-h:-10+c.y*Math.max(20,hy-110);
     if(x>W||x+w<0)continue;ctx.drawImage(S,x,y,w,h)}ctx.globalAlpha=1}
-// 오로라: 세로 커튼 띠를 한 번 그려 두고 두 겹을 엇갈리게 흘림
-const AURORA=(()=>{const W2=1200,H2=170,c=mkCanvas(W2,H2),g=c.getContext('2d');g.globalCompositeOperation='lighter';
-  for(let x=0;x<W2;x+=3){const n=.5+.25*Math.sin(x*.011)+.15*Math.sin(x*.031+1)+.1*Math.sin(x*.074+2),top=H2*(.62-.5*n),bot=H2*(.92-.1*Math.sin(x*.017)),a=.16+.38*n*n;
-    const gr=g.createLinearGradient(0,top,0,bot);gr.addColorStop(0,'rgba(190,120,255,0)');gr.addColorStop(.3,'rgba(150,140,255,'+a*.6+')');gr.addColorStop(.75,'rgba(90,255,180,'+a+')');gr.addColorStop(1,'rgba(90,255,180,0)');g.fillStyle=gr;g.fillRect(x,top,4,bot-top)}return c})();
-function drawAurora(hy,shift){const k=ENV.star*SKYFX.aurora;if(k<.03)return;const t=game.time,top=-14,h=Math.max(70,hy-10-top);ctx.globalCompositeOperation='lighter';   // 하늘 띠(화면 위 ~ 산 위) 높이에 맞춰 늘려 그림
-  for(const [sp,pa,al] of [[7,.12,1.2],[-5,.2,.9]]){ctx.globalAlpha=Math.min(1,k*al*(.75+.25*Math.sin(t*.4+pa*20)));const ox=(((t*sp-shift*pa)%1200)+1200)%1200;ctx.drawImage(AURORA,-ox,top,1200,h);ctx.drawImage(AURORA,1200-ox,top,1200,h)}
-  ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over'}
-// 열기구 스프라이트 3색
-const BALLOON_SPR=[['#e0566a','#ffd27a'],['#3a8bd0','#f6f1e4'],['#4fb487','#ee7a3c']].map(([a,b])=>{const c=mkCanvas(44,64),g=c.getContext('2d');
-  g.save();g.beginPath();g.ellipse(22,22,19,21,0,0,Math.PI*2);g.clip();for(let i=-3;i<4;i++){g.fillStyle=i%2?a:b;g.beginPath();g.ellipse(22,22,Math.abs(i)*5.5+3,22,0,0,Math.PI*2);g.fill()}g.restore();
-  g.fillStyle=a;g.beginPath();g.ellipse(22,22,4,21,0,0,Math.PI*2);g.fill();g.strokeStyle='#3b2117';g.lineWidth=2.4;g.beginPath();g.ellipse(22,22,19,21,0,0,Math.PI*2);g.stroke();
-  g.lineWidth=1.2;g.beginPath();g.moveTo(9,36);g.lineTo(17,52);g.moveTo(35,36);g.lineTo(27,52);g.stroke();g.fillStyle='#8a5a36';g.fillRect(16,51,12,9);g.strokeRect(16,51,12,9);return c});
+// ---------- 밤하늘: 은하수 + 실제 같은 별 (한 번만 그림) ----------
+//  은하수 = 부드러운 빛 덩어리 수백 개(푸른빛 + 중심부 따뜻한 빛) + 먼지 띠(어두운 갈라짐) + 띠 안에 촘촘한 잔별
+//  별 = 밝기 분포가 실제처럼(어두운 별 대부분, 밝은 별 소수) · 색온도(청백 · 흰 · 노랑 · 주황) · 1등성은 빛 번짐 + 십자 빛살
+const NS_W=1800,NS_H=240,NS_S=1.5;
+const blobSpr=(r,g,b)=>{const c=mkCanvas(64,64),x=c.getContext('2d'),gr=x.createRadialGradient(32,32,0,32,32,32);gr.addColorStop(0,'rgba('+r+','+g+','+b+',1)');gr.addColorStop(.45,'rgba('+r+','+g+','+b+',.35)');gr.addColorStop(1,'rgba('+r+','+g+','+b+',0)');x.fillStyle=gr;x.fillRect(0,0,64,64);return c};
+const STAR_COL=[[196,214,255],[224,232,255],[255,255,255],[255,244,222],[255,222,184]];
+const NIGHTSKY=(()=>{const c=mkCanvas(NS_W*NS_S,NS_H*NS_S),g=c.getContext('2d'),R=mulberry32(77),gauss=()=>(R()+R()+R()-1.5)/1.5;g.scale(NS_S,NS_S);
+  const cy=x=>112+58*Math.sin(2*Math.PI*x/NS_W+.6),wd=x=>46+16*Math.sin(2*Math.PI*x/NS_W*2+1.3);   // 은하수 중심선 · 폭 (좌우 끝이 이어짐)
+  const wrap=(x,f)=>{f(x);if(x<80)f(x+NS_W);if(x>NS_W-80)f(x-NS_W)};
+  const cool=blobSpr(170,190,255),warm=blobSpr(255,226,196),white=blobSpr(235,240,255);
+  for(let i=0;i<900;i++){const x=R()*NS_W,o=gauss()*wd(x)*.55,y=cy(x)+o,r=14+R()*40,core=Math.abs(o)<wd(x)*.25&&R()<.5;g.globalAlpha=(core?.04:.045)*(1-Math.min(1,Math.abs(o)/wd(x)));wrap(x,X=>g.drawImage(core?warm:(R()<.5?cool:white),X-r,y-r,r*2,r*2))}
+  g.globalCompositeOperation='destination-out';   // 먼지 띠: 중심선을 따라 굽이치는 어두운 갈라짐
+  for(let i=0;i<520;i++){const x=R()*NS_W,y=cy(x)+Math.sin(x*.013)*wd(x)*.22+gauss()*6,r=5+R()*13;g.globalAlpha=.07+R()*.12;wrap(x,X=>g.drawImage(white,X-r,y-r*.6,r*2,r*1.2))}
+  g.globalCompositeOperation='source-over';
+  for(let i=0;i<2600;i++){const x=R()*NS_W,y=cy(x)+gauss()*wd(x)*.6,a=.18+R()*.55,s=.45+R()*.5;g.globalAlpha=a;g.fillStyle=R()<.3?'#dfe8ff':'#fff';g.fillRect(x,y,s,s)}   // 은하수 안 잔별
+  for(let i=0;i<1100;i++){const x=R()*NS_W,y=R()*NS_H,m=Math.pow(R(),5),s=.45+m*1.4,col=STAR_COL[Math.floor(R()*STAR_COL.length)];g.globalAlpha=.25+.75*Math.min(1,m*3+R()*.3);g.fillStyle='rgb('+col.join()+')';g.fillRect(x-s/2,y-s/2,s,s)}   // 일반 별
+  const bright=[];for(let i=0;i<26;i++){const x=R()*NS_W,y=R()*NS_H*.9,col=STAR_COL[Math.floor(R()*STAR_COL.length)],s=1.1+R()*1.1;bright.push({x,y,col,s,ph:R()*6.28,sp:1.5+R()*2.5});
+    g.globalAlpha=.55;g.drawImage(blobSpr(...col),x-s*4,y-s*4,s*8,s*8);g.globalAlpha=.5;g.strokeStyle='rgb('+col.join()+')';g.lineWidth=.5;g.beginPath();g.moveTo(x-s*3.2,y);g.lineTo(x+s*3.2,y);g.moveTo(x,y-s*3.2);g.lineTo(x,y+s*3.2);g.stroke()}
+  g.globalAlpha=1;return{c,bright}})();
+function drawNightSky(shift){const a=ENV.star;if(a<.02)return;const ox=(((-shift*.15+game.time*.8)%NS_W)+NS_W)%NS_W,t=game.time;   // 아주 천천히 흐름(일주 운동)
+  ctx.globalAlpha=a;ctx.drawImage(NIGHTSKY.c,-ox,-28,NS_W,NS_H);if(NS_W-ox<W)ctx.drawImage(NIGHTSKY.c,NS_W-ox,-28,NS_W,NS_H);
+  for(const b of NIGHTSKY.bright){let x=b.x-ox;if(x<-10)x+=NS_W;if(x>W+10)continue;ctx.globalAlpha=a*(.55+.45*Math.sin(t*b.sp+b.ph));ctx.fillStyle=rgb(b.col);ctx.fillRect(x-b.s*.6,b.y-28-b.s*.6,b.s*1.2,b.s*1.2)}   // 반짝임
+  ctx.globalAlpha=1}
+// ---------- 오로라: 세로 빛줄기(광선)가 늘어진 커튼이 물결치며 흐름 ----------
+//  아래 끝이 가장 밝은 초록, 위로 갈수록 청록 → 보라로 옅어짐. 커튼 밑선은 두 개의 파동이 겹쳐 굽이치고, 밝은 부분이 천천히 옆으로 이동
+const AUR_TEX=(()=>{const w=256,h=200,c=mkCanvas(w,h),g=c.getContext('2d'),R=mulberry32(91);
+  for(let x=0;x<w;x++){const ray=.35+.65*Math.pow(R(),1.6)*(.6+.4*Math.sin(x*.21))*(.7+.3*Math.sin(x*.047)),gr=g.createLinearGradient(0,0,0,h);
+    gr.addColorStop(0,'rgba(170,90,230,0)');gr.addColorStop(.35,'rgba(150,110,255,'+(.18*ray)+')');gr.addColorStop(.62,'rgba(70,220,200,'+(.45*ray)+')');gr.addColorStop(.9,'rgba(110,255,170,'+(.95*ray)+')');gr.addColorStop(.96,'rgba(200,255,220,'+ray+')');gr.addColorStop(1,'rgba(110,255,170,0)');
+    g.fillStyle=gr;g.fillRect(x,0,1,h)}return c})();
+const AURB={c:mkCanvas(480,60),n:0};   // 오로라는 절반 해상도 버퍼에 2프레임마다 그려 붙임 (느리게 움직여 차이 없음 · 비용 약 1/4)
+function drawAurora(hy,shift){const k=ENV.star*SKYFX.aurora;if(k<.03)return;const top=-20,bh=Math.max(40,Math.round(hy+10-top)),B=AURB.c;
+  if(B.height!==Math.ceil(bh/2)){B.height=Math.ceil(bh/2);AURB.n=0}
+  if((AURB.n++&1)===0){const g=B.getContext('2d'),t=game.time,T=AUR_TEX,step=8,yb0=clamp(hy-50,40,62);g.setTransform(1,0,0,1,0,0);g.clearRect(0,0,B.width,B.height);g.setTransform(.5,0,0,.5,0,-top*.5);g.globalCompositeOperation='lighter';
+    for(const [i,y0,A,H0,f,sp,gain] of [[0,yb0,12,105,.0062,.5,1.3],[1,yb0-20,9,75,.0094,-.35,.7]]){   // 커튼 밑선을 산 위 하늘 띠에 맞춤
+      for(let x=-10;x<W+10;x+=step){const wx=x+shift*.12,ph=wx*f+t*sp,yb=y0+A*Math.sin(ph)+A*.45*Math.sin(wx*f*2.7-t*sp*1.6+i),h=H0*(.65+.35*Math.sin(wx*.0045+t*.22+i*2)),
+          I=gain*(.25+.75*smooth(-.3,1,Math.sin(wx*.0032-t*.12+i*1.7)));if(I<.02)continue;
+        g.globalAlpha=Math.min(1,I);const sx=(((wx*1.7+t*9*(i?-1:1))%T.width)+T.width)%T.width;g.drawImage(T,Math.min(sx,T.width-step),0,step,T.height,x,yb-h,step+.8,h)}}
+    g.globalAlpha=1}
+  ctx.globalCompositeOperation='lighter';ctx.globalAlpha=Math.min(1,k);ctx.drawImage(B,0,top,W,bh);ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over'}
+// ---------- 열기구: 고해상도로 그려 두고 작게 씀 (곡면 패널 · 명암 · 장식 띠 · 밧줄 · 바구니) ----------
+const BALLOON_SPR=[['#e0566a','#fbe6d4','#f2b630'],['#3a8bd0','#f6f1e4','#e0566a'],['#4fb487','#fff4d6','#ee7a3c'],['#8e6bd0','#fde9f0','#f2b630']].map(([a,b,band])=>{
+  const c=mkCanvas(120,176),g=c.getContext('2d'),cx=60;g.lineJoin='round';g.lineCap='round';
+  const env=()=>{g.beginPath();g.moveTo(cx,6);g.bezierCurveTo(104,6,116,38,114,64);g.bezierCurveTo(112,94,86,112,74,128);g.lineTo(46,128);g.bezierCurveTo(34,112,8,94,6,64);g.bezierCurveTo(4,38,16,6,cx,6);g.closePath()};
+  g.save();env();g.clip();g.fillStyle=b;g.fillRect(0,0,120,140);
+  const N=8;for(let j=0;j<N;j++){if(j%2)continue;const s0=Math.sin((-.5+j/N)*Math.PI),s1=Math.sin((-.5+(j+1)/N)*Math.PI);   // 세로 패널(곡면)
+    g.beginPath();g.moveTo(cx,4);g.quadraticCurveTo(cx+s0*70,66,cx+s0*15,130);g.lineTo(cx+s1*15,130);g.quadraticCurveTo(cx+s1*70,66,cx,4);g.closePath();g.fillStyle=a;g.fill()}
+  g.fillStyle=band;g.beginPath();for(let x=0;x<=120;x+=10){const y=x%20?78:70;x?g.lineTo(x,y):g.moveTo(x,y)}for(let x=120;x>=0;x-=10)g.lineTo(x,(x%20?78:70)+9);g.closePath();g.fill();   // 지그재그 장식 띠
+  const hl=g.createRadialGradient(40,38,4,48,52,70);hl.addColorStop(0,'rgba(255,255,255,.55)');hl.addColorStop(.5,'rgba(255,255,255,.08)');hl.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=hl;g.fillRect(0,0,120,140);
+  const sh=g.createLinearGradient(30,0,118,0);sh.addColorStop(0,'rgba(20,30,60,0)');sh.addColorStop(1,'rgba(20,30,60,.32)');g.fillStyle=sh;g.fillRect(0,0,120,140);
+  g.strokeStyle='rgba(40,30,30,.18)';g.lineWidth=1.2;for(let j=1;j<N;j++){const s0=Math.sin((-.5+j/N)*Math.PI);g.beginPath();g.moveTo(cx,4);g.quadraticCurveTo(cx+s0*70,66,cx+s0*15,130);g.stroke()}
+  g.restore();env();g.strokeStyle='#3b2117';g.lineWidth=3.2;g.stroke();
+  g.fillStyle=a;g.fillRect(45,126,30,6);g.strokeRect(45,126,30,6);   // 입구 치마
+  g.strokeStyle='#4a3428';g.lineWidth=1.4;g.beginPath();g.moveTo(47,132);g.lineTo(51,152);g.moveTo(73,132);g.lineTo(69,152);g.moveTo(56,132);g.lineTo(57,152);g.moveTo(64,132);g.lineTo(63,152);g.stroke();
+  g.fillStyle='#ffb347';g.beginPath();g.ellipse(60,134,3.5,5,0,0,Math.PI*2);g.fill();   // 버너 불꽃
+  g.fillStyle='#a8743f';g.fillRect(49,152,22,16);g.strokeStyle='#3b2117';g.lineWidth=2.4;g.strokeRect(49,152,22,16);
+  g.strokeStyle='rgba(60,36,20,.55)';g.lineWidth=1;g.beginPath();for(let y=156;y<168;y+=4){g.moveTo(50,y);g.lineTo(70,y)}for(let x=53;x<70;x+=4){g.moveTo(x,153);g.lineTo(x,167)}g.stroke();
+  return c});
 const SKYFX={lt:0,meteors:[],birds:null,birdT:18,balloons:[],balT:6,aurora:.8};
 function skyTick(){const s=game,dt=clamp(s.time-SKYFX.lt,0,.1);SKYFX.lt=s.time;if(!dt||!M.free)return dt;
   const day=ENV.sunA>.45&&ENV.star<.2&&ENV.white<.25;
@@ -991,11 +1036,11 @@ function skyTick(){const s=game,dt=clamp(s.time-SKYFX.lt,0,.1);SKYFX.lt=s.time;i
   if(SKYFX.birds){const b=SKYFX.birds;b.x+=b.v*dt;b.t+=dt;if(b.x<-400||b.x>W+400)SKYFX.birds=null}
   else if(day&&(SKYFX.birdT-=dt)<=0){const d=Math.random()<.5?1:-1;SKYFX.birds={x:d>0?-120:W+120,y:rand(18,52),v:d*rand(38,55),n:5+Math.floor(Math.random()*5),t:0};SKYFX.birdT=rand(35,70)}
   for(const b of SKYFX.balloons){b.x+=b.v*dt;b.t+=dt;b.a=Math.min(1,b.t/4)*(b.x>W+80?0:1)}SKYFX.balloons=SKYFX.balloons.filter(b=>b.x<W+120);
-  if(day&&SKYFX.balloons.length<2&&(SKYFX.balT-=dt)<=0){SKYFX.balloons.push({x:rand(-20,W*.7),y:rand(.35,.85),v:rand(3,6),s:rand(.5,1),k:Math.floor(Math.random()*3),t:0,a:0});SKYFX.balT=rand(60,120)}
+  if(day&&SKYFX.balloons.length<2&&(SKYFX.balT-=dt)<=0){SKYFX.balloons.push({x:rand(-20,W*.7),y:rand(.35,.85),v:rand(3,6),s:rand(.17,.3),k:Math.floor(Math.random()*BALLOON_SPR.length),t:0,a:0});SKYFX.balT=rand(60,120)}
   return dt}
 function drawSkyFront(hy,shift){   // 먼 산 앞쪽: 열기구 · 새 떼
   const dayA=clamp((ENV.sunA-.3)*2,0,1)*(1-ENV.white);if(dayA<=0)return;
-  for(const b of SKYFX.balloons){const S=BALLOON_SPR[b.k],h=S.height*b.s,w=S.width*b.s,x=b.x-shift*.3,y=lerp(14,hy-70,b.y)+Math.sin(b.t*.5)*3;ctx.globalAlpha=b.a*dayA;ctx.drawImage(S,x,y,w,h)}ctx.globalAlpha=1;
+  for(const b of SKYFX.balloons){const S=BALLOON_SPR[b.k],h=S.height*b.s,w=S.width*b.s,x=b.x-shift*.3,y=lerp(10,hy-60,b.y)+Math.sin(b.t*.5)*3;ctx.globalAlpha=b.a*dayA*(.75+.25*b.s/.3);ctx.drawImage(S,x,y,w,h)}ctx.globalAlpha=1;
   const B=SKYFX.birds;if(B){ctx.strokeStyle='rgba(50,64,76,'+(.8*dayA)+')';ctx.lineWidth=1.4;ctx.lineCap='round';ctx.beginPath();
     for(let i=0;i<B.n;i++){const r=Math.ceil(i/2),sd=i%2?1:-1,x=B.x-shift*.4-Math.sign(B.v)*r*11,y=B.y+sd*r*6,f=Math.sin(B.t*11+i*1.7)*3,s=4;ctx.moveTo(x-s,y-f);ctx.quadraticCurveTo(x-s*.4,y-1,x,y+1);ctx.quadraticCurveTo(x+s*.4,y-1,x+s,y-f)}ctx.stroke()}}
 function drawMeteors(){if(!SKYFX.meteors.length)return;ctx.globalCompositeOperation='lighter';ctx.lineCap='round';
@@ -1009,16 +1054,16 @@ function drawMeteors(){if(!SKYFX.meteors.length)return;ctx.globalCompositeOperat
 const THEME_LEN=3500,THEME_FADE=700;
 const THEMES=[
   {name:'🏔 설산 연봉',valley:'rocks',
-    far:{seed:31,per:2400,n:18,h:[84,169],w:[70,150],shape:'sharp',body:[132,168,192],snow:[244,249,252],shade:[104,138,162],sl:.4},
+    far:{seed:31,per:2400,n:18,h:[66,132],w:[70,150],shape:'sharp',body:[132,168,192],snow:[244,249,252],shade:[104,138,162],sl:.4},
     mid:{seed:32,per:1900,n:15,h:[28,64],w:[55,115],shape:'sharp',body:[122,154,174],snow:[246,250,252],shade:[90,122,146],sl:.5,trees:.12}},
   {name:'❄ 호수 계곡',valley:'lake',
-    far:{seed:41,per:2400,n:12,h:[65,130],w:[140,250],shape:'round',body:[140,176,198],snow:[240,247,251],shade:[118,150,172],sl:.48},
+    far:{seed:41,per:2400,n:12,h:[51,101],w:[140,250],shape:'round',body:[140,176,198],snow:[240,247,251],shade:[118,150,172],sl:.48},
     mid:{seed:42,per:1900,n:12,h:[21,46],w:[90,170],shape:'round',body:[136,166,184],snow:[244,249,252],shade:[104,136,158],sl:.72,trees:.55}},
   {name:'🏘 마을 계곡',valley:'village',
-    far:{seed:51,per:2400,n:15,h:[76,146],w:[100,190],shape:'mid',body:[136,172,195],snow:[242,248,252],shade:[110,144,166],sl:.45},
+    far:{seed:51,per:2400,n:15,h:[59,114],w:[100,190],shape:'mid',body:[136,172,195],snow:[242,248,252],shade:[110,144,166],sl:.45},
     mid:{seed:52,per:1900,n:13,h:[23,53],w:[80,150],shape:'round',body:[128,160,178],snow:[244,249,252],shade:[98,130,152],sl:.62,trees:.35}},
   {name:'🌲 침엽수 고원',valley:'forest',
-    far:{seed:61,per:2400,n:10,h:[54,111],w:[190,310],shape:'plateau',body:[134,170,190],snow:[240,247,251],shade:[112,146,166],sl:.55},
+    far:{seed:61,per:2400,n:10,h:[42,87],w:[190,310],shape:'plateau',body:[134,170,190],snow:[240,247,251],shade:[112,146,166],sl:.55},
     mid:{seed:62,per:1900,n:12,h:[25,55],w:[110,200],shape:'round',body:[120,152,168],snow:[242,248,251],shade:[92,124,146],sl:.85,trees:1.5}}];
 const THEMEC={S:0,m:new Map()};
 function themeProfile(L){const rnd=mulberry32(L.seed),peaks=[];for(let i=0;i<L.n;i++)peaks.push({x:rnd()*L.per,h:L.h[0]+rnd()*(L.h[1]-L.h[0]),w:L.w[0]+rnd()*(L.w[1]-L.w[0])});
@@ -1071,7 +1116,7 @@ function drawBackground(){
   {const S=Math.min(RES.scale,1.25);if(Math.abs(S-BGL.s)>.12||!BGL.layers.length)buildBg(S)}
   const hy=horizonY(),shift=cam.f*cam.yawT,F=M.free;if(F)skyTick();
   ctx.drawImage(skyStrip(),0,0,1,128,-80,-80,W+160,hy+100);
-  if(ENV.star>.02){ctx.globalAlpha=ENV.star;const ox=((-shift*.15)%1400+1400)%1400;ctx.drawImage(STARS,-ox,-20);ctx.drawImage(STARS,1400-ox,-20);ctx.globalAlpha=1}
+  drawNightSky(shift);
   if(F){drawAurora(hy,shift);drawMeteors()}
   if(ENV.moon>.02){const mx=ENV.moonX-shift*.05,my=lerp(26,hy-24,ENV.moonLow),mg=ctx.createRadialGradient(mx,my,0,mx,my,120);mg.addColorStop(0,'rgba(210,225,255,'+(.35*ENV.moon)+')');mg.addColorStop(1,'rgba(210,225,255,0)');ctx.fillStyle=mg;ctx.fillRect(mx-120,my-120,240,240);
     ctx.globalAlpha=ENV.moon;ctx.fillStyle='#f4f1e4';ctx.beginPath();ctx.arc(mx,my,15,0,Math.PI*2);ctx.fill();ctx.fillStyle='rgba(190,186,170,.55)';ctx.beginPath();ctx.arc(mx-4,my-4,3.5,0,Math.PI*2);ctx.arc(mx+5,my+4,2.6,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1}
