@@ -1003,62 +1003,97 @@ function drawMeteors(){if(!SKYFX.meteors.length)return;ctx.globalCompositeOperat
   ctx.globalCompositeOperation='source-over'}
 
 // =====================================================================
-//  프리런 원경 테마: 치이카와풍 파스텔 파노라마 일러스트
-//   3.5km마다 설산 → 호수 → 마을 → 침엽수 고원으로 자연스럽게 교차
-//   각 에셋은 좌우 반전 타일로 제작해 반복 경계가 튀지 않도록 구성
+//  프리런 원경 테마: 3.5km마다 먼 산맥 · 앞 능선 · 계곡 풍경이 다른 테마로 서서히 바뀜 (전부 코드로 그려 캔버스에 구워 둠)
+//   설산 연봉 → 호수 계곡 → 마을 계곡 → 침엽수 고원 → … (시작 테마는 판마다 랜덤)
 // =====================================================================
 const THEME_LEN=3500,THEME_FADE=700;
 const THEMES=[
-  {name:'🏔 설산 연봉',art:'assets/panorama_snow.webp'},
-  {name:'❄ 호수 계곡',art:'assets/panorama_lake.webp'},
-  {name:'🏘 마을 계곡',art:'assets/panorama_village.webp'},
-  {name:'🌲 침엽수 고원',art:'assets/panorama_forest.webp'}];
-const THEME_ART=THEMES.map(T=>{const im=new Image();im.decoding='async';im.src=T.art;return im});
-function getTheme(i){return THEME_ART[(i%THEMES.length+THEMES.length)%THEMES.length]}
+  {name:'🏔 설산 연봉',valley:'rocks',
+    far:{seed:31,per:2400,n:18,h:[84,169],w:[70,150],shape:'sharp',body:[132,168,192],snow:[244,249,252],shade:[104,138,162],sl:.4},
+    mid:{seed:32,per:1900,n:15,h:[28,64],w:[55,115],shape:'sharp',body:[122,154,174],snow:[246,250,252],shade:[90,122,146],sl:.5,trees:.12}},
+  {name:'❄ 호수 계곡',valley:'lake',
+    far:{seed:41,per:2400,n:12,h:[65,130],w:[140,250],shape:'round',body:[140,176,198],snow:[240,247,251],shade:[118,150,172],sl:.48},
+    mid:{seed:42,per:1900,n:12,h:[21,46],w:[90,170],shape:'round',body:[136,166,184],snow:[244,249,252],shade:[104,136,158],sl:.72,trees:.55}},
+  {name:'🏘 마을 계곡',valley:'village',
+    far:{seed:51,per:2400,n:15,h:[76,146],w:[100,190],shape:'mid',body:[136,172,195],snow:[242,248,252],shade:[110,144,166],sl:.45},
+    mid:{seed:52,per:1900,n:13,h:[23,53],w:[80,150],shape:'round',body:[128,160,178],snow:[244,249,252],shade:[98,130,152],sl:.62,trees:.35}},
+  {name:'🌲 침엽수 고원',valley:'forest',
+    far:{seed:61,per:2400,n:10,h:[54,111],w:[190,310],shape:'plateau',body:[134,170,190],snow:[240,247,251],shade:[112,146,166],sl:.55},
+    mid:{seed:62,per:1900,n:12,h:[25,55],w:[110,200],shape:'round',body:[120,152,168],snow:[242,248,251],shade:[92,124,146],sl:.85,trees:1.5}}];
+const THEMEC={S:0,m:new Map()};
+function themeProfile(L){const rnd=mulberry32(L.seed),peaks=[];for(let i=0;i<L.n;i++)peaks.push({x:rnd()*L.per,h:L.h[0]+rnd()*(L.h[1]-L.h[0]),w:L.w[0]+rnd()*(L.w[1]-L.w[0])});
+  const sh=d=>L.shape==='sharp'?1-Math.pow(d,.78):L.shape==='round'?Math.pow(1-d*d,.9):L.shape==='plateau'?smooth(0,.62,1-d):1-Math.pow(d,1.15);
+  const pts=[];for(let x=0;x<=L.per;x+=4){let best=0;for(const p of peaks)for(const o of [-L.per,0,L.per]){const d=Math.abs(x-p.x-o)/p.w;if(d<1)best=Math.max(best,p.h*sh(d))}
+    if(L.shape==='sharp')best*=1+.05*Math.sin(x*.21+L.seed)+.03*Math.sin(x*.53);pts.push([x,best])}return{peaks,pts}}
+const treePath=(g,x,y,s)=>{g.moveTo(x,y-s*2.2);g.lineTo(x-s*.7,y);g.lineTo(x+s*.7,y);g.closePath()};
+function bakeRange(L,S){const P=themeProfile(L),maxH=Math.max(...P.pts.map(p=>p[1]))+6,c=mkCanvas(L.per*S,(maxH+4)*S),g=c.getContext('2d');g.scale(S,S);const base=maxH,per=L.per,rnd=mulberry32(L.seed*3+7);
+  const body=()=>{g.beginPath();g.moveTo(0,base+4);for(const [x,h] of P.pts)g.lineTo(x,base-h);g.lineTo(per,base+4);g.closePath()};
+  body();g.fillStyle=rgb(L.body);g.fill();g.save();body();g.clip();
+  const sl=maxH*L.sl;g.beginPath();g.moveTo(0,base-sl);for(const [x,h] of P.pts)g.lineTo(x,base-Math.max(h,sl+5*Math.sin(x*.07)+3*Math.sin(x*.19)));g.lineTo(per,base-sl);g.closePath();g.fillStyle=rgb(L.snow);g.fill();
+  g.fillStyle=rgb(L.shade,.42);for(const pk of P.peaks)for(const o of [-per,0,per]){const px=pk.x+o;g.beginPath();g.moveTo(px,base-pk.h);g.lineTo(px+pk.w*.6,base+4);g.lineTo(px+pk.w*.06,base+4);g.closePath();g.fill()}
+  if(L.trees){g.beginPath();const n=Math.round(per*L.trees/7);for(let i=0;i<n;i++){const x=rnd()*per,h=P.pts[Math.min(P.pts.length-1,Math.round(x/4))][1];if(h<7)continue;const y=base-h*(.04+rnd()*.7),s=2.4+rnd()*2.4;for(const o of [-per,0,per])treePath(g,x+o,y,s)}g.fillStyle='rgba(48,92,92,.85)';g.fill()}
+  const hg=g.createLinearGradient(0,base-50,0,base+4);hg.addColorStop(0,'rgba(222,236,244,0)');hg.addColorStop(1,'rgba(222,236,244,.55)');g.fillStyle=hg;g.fillRect(0,base-50,per,54);g.restore();
+  return{c,per,maxH}}
+// 계곡(지평선 아래) 풍경 띠: 위쪽일수록 멀어서 작게
+function bakeValley(kind,seed,S){const per=2400,VH=140,c=mkCanvas(per*S,VH*S),g=c.getContext('2d'),rnd=mulberry32(seed),lights=[];g.scale(S,S);g.lineJoin='round';
+  const sz=y=>.55+y/VH*1.1,wrap=(x,f)=>{for(const o of [-per,0,per])f(x+o)};
+  const pines=(n,y0,y1,col)=>{g.beginPath();for(let i=0;i<n;i++){const x=rnd()*per,y=y0+rnd()*(y1-y0),s=(3+rnd()*2.5)*sz(y);wrap(x,X=>treePath(g,X,y,s))}g.fillStyle=col||'rgba(52,96,98,.8)';g.fill()};
+  if(kind==='lake'){for(const [cx,cy,rx,ry] of [[500,58,250,20],[1650,46,190,15]]){wrap(cx,X=>{g.fillStyle='#b4d2e2';g.beginPath();g.ellipse(X,cy,rx,ry,0,0,Math.PI*2);g.fill();g.strokeStyle='rgba(255,255,255,.85)';g.lineWidth=2.5;g.stroke();
+        g.fillStyle='rgba(255,255,255,.55)';for(let k=0;k<4;k++)g.fillRect(X-rx*.5+k*rx*.28,cy-ry*.3+k*2.5,rx*.22,1.6)});
+      pines(26,cy-ry-4,cy-ry+2);pines(18,cy+ry,cy+ry+14)}
+    for(const [x,y] of [[820,52],[1960,40]]){const s=sz(y);wrap(x,X=>{g.fillStyle='#8a5a40';g.fillRect(X-5*s,y-5*s,10*s,6*s);g.fillStyle='#fff';g.beginPath();g.moveTo(X-7*s,y-4.5*s);g.lineTo(X,y-10*s);g.lineTo(X+7*s,y-4.5*s);g.closePath();g.fill()});lights.push([x+2*s,y-2*s])}
+    pines(70,20,130)}
+  else if(kind==='village'){pines(60,14,40);
+    for(const [cx,cy,n] of [[380,70,11],[1250,52,9],[1950,88,12]]){const hs=[];for(let i=0;i<n;i++)hs.push([cx+(rnd()-.5)*190,cy+(rnd()-.5)*28]);hs.sort((a,b)=>a[1]-b[1]);
+      for(const [x,y] of hs){const s=sz(y)*(1.1+rnd()*.5),w=9*s,h=6*s,col=['#c96f5a','#d8b26a','#8a6a5a','#7d8fa8','#b8584a'][Math.floor(rnd()*5)];
+        wrap(x,X=>{g.fillStyle=col;g.fillRect(X-w/2,y-h,w,h);g.fillStyle='#5a3e30';g.fillRect(X+w*.18,y-h*1.75,w*.14,h*.6);g.fillStyle='#fbfdff';g.beginPath();g.moveTo(X-w*.62,y-h);g.lineTo(X,y-h*1.85);g.lineTo(X+w*.62,y-h);g.closePath();g.fill();
+          g.strokeStyle='rgba(60,40,30,.55)';g.lineWidth=.8;g.stroke();g.fillStyle='#5b4636';g.fillRect(X-w*.25,y-h*.62,w*.18,h*.3);g.fillRect(X+w*.08,y-h*.62,w*.18,h*.3)});
+        lights.push([x-w*.16,y-h*.47],[x+w*.17,y-h*.47])}
+      {const x=cx+60,y=cy-6,s=sz(y)*1.3;wrap(x,X=>{g.fillStyle='#e9e2d4';g.fillRect(X-4*s,y-16*s,8*s,16*s);g.fillStyle='#b8584a';g.beginPath();g.moveTo(X-5*s,y-16*s);g.lineTo(X,y-27*s);g.lineTo(X+5*s,y-16*s);g.closePath();g.fill();g.fillStyle='#5b4636';g.fillRect(X-1.5*s,y-12*s,3*s,4*s)});lights.push([x,y-10*s])}
+      pines(14,cy+12,cy+30)}
+    pines(40,96,135)}
+  else if(kind==='forest'){for(let r=0;r<6;r++){const y0=14+r*20;pines(Math.round(per*.11*(1-r*.08)),y0,y0+16,['rgba(70,112,114,.7)','rgba(60,104,104,.78)','rgba(52,96,96,.85)','rgba(46,90,88,.9)','rgba(42,84,82,.92)','rgba(38,78,76,.95)'][r])}
+    g.fillStyle='rgba(255,255,255,.75)';for(let i=0;i<260;i++){const x=rnd()*per,y=14+rnd()*120;g.fillRect(x,y,1.6*sz(y),1.2)}
+    {const x=1500,y=74,s=sz(y)*1.2;wrap(x,X=>{g.fillStyle='#8a5a40';g.fillRect(X-6*s,y-6*s,12*s,7*s);g.fillStyle='#fff';g.fillRect(X-7.5*s,y-8*s,15*s,2.6*s)});lights.push([x,y-3*s])}}
+  else{   // rocks: 얼어붙은 강 + 바위 + 드문 나무
+    g.strokeStyle='#bcd6e4';g.lineWidth=7;g.lineCap='round';g.beginPath();for(let x=-40;x<=per+40;x+=20){const y=70+26*Math.sin(x*.004)+10*Math.sin(x*.013);x<-30?g.moveTo(x,y):g.lineTo(x,y)}g.stroke();g.strokeStyle='rgba(255,255,255,.7)';g.lineWidth=1.5;g.stroke();
+    for(let i=0;i<40;i++){const x=rnd()*per,y=18+rnd()*110,s=(4+rnd()*6)*sz(y);wrap(x,X=>{g.fillStyle='#7f939f';g.beginPath();g.moveTo(X-s,y);g.lineTo(X-s*.5,y-s*.8);g.lineTo(X+s*.3,y-s);g.lineTo(X+s,y);g.closePath();g.fill();g.fillStyle='#f6fafc';g.beginPath();g.moveTo(X-s*.55,y-s*.75);g.lineTo(X+s*.3,y-s);g.lineTo(X+s*.55,y-s*.55);g.closePath();g.fill()})}
+    pines(50,14,130)}
+  return{c,per,VH,lights}}
+function getTheme(i){const S=Math.min(RES.scale,1.25);if(Math.abs(S-THEMEC.S)>.2){THEMEC.m.clear();THEMEC.S=S}let T=THEMEC.m.get(i);
+  if(!T){const D=THEMES[i];T={far:bakeRange(D.far,S),mid:bakeRange(D.mid,S),val:bakeValley(D.valley,D.far.seed*5,S)};THEMEC.m.set(i,T);if(THEMEC.m.size>2)THEMEC.m.delete(THEMEC.m.keys().next().value)}return T}   // 메모리: 지금·다음 테마만 보관
+// 지금 위치의 테마 2개(현재 · 다음)와 섞는 비율
 function themeAt(z){const s=game,k=Math.floor(z/THEME_LEN),u=smooth(THEME_LEN-THEME_FADE,THEME_LEN,z-k*THEME_LEN),o=s.themeOff||0;return{a:(k+o)%THEMES.length,b:(k+1+o)%THEMES.length,u}}
-function drawThemeArt(I,hy,shift,alpha){
-  if(alpha<=0||!I||!I.complete||!I.naturalWidth)return;
-  const per=2700,dh=per*I.naturalHeight/I.naturalWidth,off=((shift%per)+per)%per,top=hy+4-dh;
-  ctx.globalAlpha=alpha;for(let x=-off;x<W;x+=per)ctx.drawImage(I,x,top,per,dh);ctx.globalAlpha=1;
-}
+function drawRangeL(L,top,shift,alpha){if(alpha<=0)return;const off=((shift%L.per)+L.per)%L.per;ctx.globalAlpha=alpha;for(let ox=-off;ox<W;ox+=L.per)ctx.drawImage(L.c,ox,top,L.per,L.maxH+4);ctx.globalAlpha=1}
+function drawValleyL(V,hy,shift,alpha){if(alpha<=0)return;const off=((shift%V.per)+V.per)%V.per,top=hy+10;ctx.globalAlpha=alpha;for(let ox=-off;ox<W;ox+=V.per)ctx.drawImage(V.c,ox,top,V.per,V.VH);ctx.globalAlpha=1;
+  if(ENV.lamp>.2)for(const [lx,ly] of V.lights){let x=lx-off;while(x<-20)x+=V.per;if(x<=W+20)GLOWS.push({x,y:top+ly,r:5+ly/V.VH*5,a:ENV.lamp*.85*alpha,o:-1})}}
 function drawBackground(){
   {const S=Math.min(RES.scale,1.25);if(Math.abs(S-BGL.s)>.12||!BGL.layers.length)buildBg(S)}
   const hy=horizonY(),shift=cam.f*cam.yawT,F=M.free;if(F)skyTick();
   ctx.drawImage(skyStrip(),0,0,1,128,-80,-80,W+160,hy+100);
-  if(F){
-    const th=themeAt(game.z),A=getTheme(th.a),B=th.u>0?getTheme(th.b):null,mix=smooth(0,1,th.u),ua=1-mix,ub=mix;
-    const hasA=A&&A.complete&&A.naturalWidth,hasB=B&&B.complete&&B.naturalWidth;
-    if(hasA||hasB){
-      if(hasA)drawThemeArt(A,hy,shift*.72+300,ua);
-      if(hasB)drawThemeArt(B,hy,shift*.72+300,ub);
-    }else{
-      // 이미지가 로딩되는 아주 짧은 동안은 기존 코드 원경으로 빈 화면을 방지
-      drawLayer(BGL.layers[0],hy,shift);drawLayer(BGL.layers[1],hy,shift);
-      drawValleyGrad(hy);drawLayer(BGL.layers[2],hy,shift);
-    }
-    drawClouds(hy,shift,true);
-    drawSkyFront(hy,shift);
-    if(th.u>.85&&th.u<1&&!game._thPre){game._thPre=1;setTimeout(()=>getTheme((th.b+1)%THEMES.length),0)}else if(th.u<.5)game._thPre=0;
-  }else{
-    drawLayer(BGL.layers[0],hy,shift);drawLayer(BGL.layers[1],hy,shift);
-    drawValleyGrad(hy);drawLayer(BGL.layers[2],hy,shift);
-    // 일반 코스는 기존 설산·숲·호수 배경 유지
-    ctx.fillStyle='rgba(58,98,104,.55)';ctx.beginPath();for(let i=0;i<60;i++){const x=((i*41-shift)%2460+2460)%2460-200,y=hy+44+hash(i,3)*26,s=5+hash(i,4)*5;ctx.moveTo(x,y-s*1.8);ctx.lineTo(x-s*.6,y);ctx.lineTo(x+s*.6,y);ctx.closePath()}ctx.fill();
-    const lx=((620-shift)%2460+2460)%2460-300;ctx.fillStyle='#b9d4e1';ctx.beginPath();ctx.ellipse(lx,hy+86,120,12,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='rgba(255,255,255,.6)';ctx.fillRect(lx-60,hy+84,70,2);
-    for(let i=0;i<9;i++){const x=lx+150+i*13,y=hy+80+(i%3)*4;ctx.fillStyle=['#c96f5a','#d8b26a','#8a6a5a'][i%3];ctx.fillRect(x,y,7,5);ctx.fillStyle='#fff';ctx.fillRect(x-1,y-2,9,2)}
-  }
-  // 구름은 모든 모드에서 흐르고, 낮은 구름은 프리런 원경 위에 추가
-  drawClouds(hy,shift,false);
-  // 별·오로라·별똥별은 원경 위에 그려 시간대가 바뀌어도 가려지지 않게 함
   if(ENV.star>.02){ctx.globalAlpha=ENV.star;const ox=((-shift*.15)%1400+1400)%1400;ctx.drawImage(STARS,-ox,-20);ctx.drawImage(STARS,1400-ox,-20);ctx.globalAlpha=1}
   if(F){drawAurora(hy,shift);drawMeteors()}
   if(ENV.moon>.02){const mx=ENV.moonX-shift*.05,my=lerp(26,hy-24,ENV.moonLow),mg=ctx.createRadialGradient(mx,my,0,mx,my,120);mg.addColorStop(0,'rgba(210,225,255,'+(.35*ENV.moon)+')');mg.addColorStop(1,'rgba(210,225,255,0)');ctx.fillStyle=mg;ctx.fillRect(mx-120,my-120,240,240);
     ctx.globalAlpha=ENV.moon;ctx.fillStyle='#f4f1e4';ctx.beginPath();ctx.arc(mx,my,15,0,Math.PI*2);ctx.fill();ctx.fillStyle='rgba(190,186,170,.55)';ctx.beginPath();ctx.arc(mx-4,my-4,3.5,0,Math.PI*2);ctx.arc(mx+5,my+4,2.6,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1}
   if(ENV.sunA>.02){const sx=ENV.sunX-shift*.05,sy=lerp(30,hy-18,ENV.sunLow),sr=260+ENV.sunLow*120,sun=ctx.createRadialGradient(sx,sy,0,sx,sy,sr);sun.addColorStop(0,rgb(ENV.sun,ENV.sunA));sun.addColorStop(.25,rgb(ENV.sun,ENV.sunA*.4));sun.addColorStop(1,rgb(ENV.sun,0));ctx.fillStyle=sun;ctx.fillRect(-80,-80,W+160,hy+80);
     if(ENV.sunLow>.5||F){ctx.fillStyle=rgb([255,240,210],ENV.sunA*.9);ctx.beginPath();ctx.arc(sx,sy,13+ENV.sunLow*12,0,Math.PI*2);ctx.fill()}}
-  drawSunGlare(hy,shift);
+  drawClouds(hy,shift,false);
+  if(F){const th=themeAt(game.z),A=getTheme(th.a),B=th.u>0?getTheme(th.b):null,ua=1-smooth(.35,1,th.u),ub=smooth(0,.65,th.u);
+    for(const [T,al] of [[A,ua],[B,ub]])if(T){drawRangeL(T.far,hy+4-T.far.maxH,shift*.8+300,al)}
+    drawClouds(hy,shift,true);
+    for(const [T,al] of [[A,ua],[B,ub]])if(T)drawRangeL(T.mid,hy+8-T.mid.maxH,shift+900,al);
+    drawSkyFront(hy,shift);
+    drawSunGlare(hy,shift);
+    drawValleyGrad(hy);drawLayer(BGL.layers[2],hy,shift);
+    for(const [T,al] of [[A,ua],[B,ub]])if(T)drawValleyL(T.val,hy,shift,al);
+    if(th.u>.85&&th.u<1&&!game._thPre){game._thPre=1;setTimeout(()=>getTheme((th.b+1)%THEMES.length),0)}else if(th.u<.5)game._thPre=0}   // 다다음 테마를 미리 구워 둠 → 바뀔 때 끊김 없음
+  else{drawLayer(BGL.layers[0],hy,shift);drawLayer(BGL.layers[1],hy,shift);drawSunGlare(hy,shift);drawValleyGrad(hy);drawLayer(BGL.layers[2],hy,shift);
+    // 먼 숲 띠, 얼어붙은 호수, 마을
+    ctx.fillStyle='rgba(58,98,104,.55)';ctx.beginPath();for(let i=0;i<60;i++){const x=((i*41-shift)%2460+2460)%2460-200,y=hy+44+hash(i,3)*26,s=5+hash(i,4)*5;ctx.moveTo(x,y-s*1.8);ctx.lineTo(x-s*.6,y);ctx.lineTo(x+s*.6,y);ctx.closePath()}ctx.fill();
+    const lx=((620-shift)%2460+2460)%2460-300;ctx.fillStyle='#b9d4e1';ctx.beginPath();ctx.ellipse(lx,hy+86,120,12,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='rgba(255,255,255,.6)';ctx.fillRect(lx-60,hy+84,70,2);
+    for(let i=0;i<9;i++){const x=lx+150+i*13,y=hy+80+(i%3)*4;ctx.fillStyle=['#c96f5a','#d8b26a','#8a6a5a'][i%3];ctx.fillRect(x,y,7,5);ctx.fillStyle='#fff';ctx.fillRect(x-1,y-2,9,2)}}
   // 계곡 안개
-  const mist=ctx.createLinearGradient(0,hy+20,0,hy+140);mist.addColorStop(0,'rgba(240,247,250,0)');mist.addColorStop(.5,'rgba(240,247,250,.42)');mist.addColorStop(1,'rgba(240,247,250,0)');ctx.fillStyle=mist;ctx.fillRect(-80,hy+20,W+160,120);
+  const mist=ctx.createLinearGradient(0,hy+20,0,hy+140);mist.addColorStop(0,'rgba(240,247,250,0)');mist.addColorStop(.5,'rgba(240,247,250,.55)');mist.addColorStop(1,'rgba(240,247,250,0)');ctx.fillStyle=mist;ctx.fillRect(-80,hy+20,W+160,120);
 }
 function drawSunGlare(hy,shift){if(ENV.sunA>.25&&ENV.sunLow>.5){const sx=ENV.sunX-shift*.05,sy=lerp(30,hy-18,ENV.sunLow),gl=ctx.createRadialGradient(sx,sy,0,sx,sy,420);gl.addColorStop(0,rgb(ENV.sun,.5*ENV.sunA));gl.addColorStop(.4,rgb(ENV.sun,.16*ENV.sunA));gl.addColorStop(1,rgb(ENV.sun,0));ctx.globalCompositeOperation='screen';ctx.fillStyle=gl;ctx.fillRect(sx-420,-80,840,hy+200);ctx.globalCompositeOperation='source-over'}}   // 해 질 녘·새벽 역광 번짐
 function drawValleyGrad(hy){const vg=ctx.createLinearGradient(0,hy,0,hy+260);vg.addColorStop(0,rgb(ENV.valley));vg.addColorStop(1,rgb(mix3(ENV.valley,[255,255,255],.45).map(Math.round)));ctx.fillStyle=vg;ctx.fillRect(-80,hy+10,W+160,H+80-hy)}
