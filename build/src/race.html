@@ -1,0 +1,28 @@
+<button class="ibtn hide" id="itemBtn" aria-label="아이템 사용">?</button>
+<div class="ov hide" id="rLobby"><div class="pcard rl"><div class="tape"></div>
+  <div class="rlhead"><h2>🏁 멀티 레이스</h2><span class="rlwal" id="rlWal">🥕 0</span></div>
+  <div class="rltop">
+    <button class="mchar" id="rlChar" aria-label="캐릭터 바꾸기"><img id="rlCharImg" src="assets/rabbit_front.webp" alt=""><b id="rlCharName">우사기</b><small id="rlCharTag">바꾸기 ›</small></button>
+    <label class="rlnick">닉네임 <input id="rlNick" maxlength="8" autocomplete="off" spellcheck="false"></label>
+  </div>
+  <div id="rlHome">
+    <button class="pbtn primary big" id="rlQuick">⚡ 빠른 매칭</button>
+    <div class="pgrid"><button class="pbtn" id="rlCreate">🏠 방 만들기</button><button class="pbtn" id="rlJoinBtn">🔑 코드로 참가</button></div>
+    <div class="rljoin hide" id="rlJoinRow"><input id="rlCode" maxlength="4" placeholder="ABCD" autocomplete="off" spellcheck="false"><button class="pbtn primary" id="rlJoinGo">참가</button></div>
+    <p class="info err" id="rlMsg"></p>
+    <div class="rlsolo"><div class="rlsub">🤖 봇 3명과 연습 레이스 · 서버 없이 바로</div><div class="rcgrid" id="rlSoloCourses"></div><button class="pbtn" id="rlSolo">▶ 연습 레이스 출발</button></div>
+    <div class="pgrid rlfoot"><a class="pbtn" href="index.html">← 메인 게임</a><button class="pbtn" id="rlSet">⚙ 설정</button></div>
+  </div>
+  <div id="rlRoom" class="hide">
+    <div class="rlsub" id="rlRoomTitle">친구 방</div>
+    <div class="rlcode" id="rlCodeRow">방 코드 <b id="rlRoomCode">----</b><button class="sibtn" id="rlCopy">링크 복사</button></div>
+    <ul class="rlplayers" id="rlPlayers"></ul>
+    <div class="rcgrid" id="rlCourses"></div>
+    <p class="info" id="rlRoomMsg"></p>
+    <div class="pgrid"><button class="pbtn primary" id="rlStart">▶ 출발</button><button class="pbtn" id="rlLeave">나가기</button></div>
+  </div>
+</div></div>
+<div class="ov hide" id="rRes"><div class="pcard rr"><div class="tape"></div><h2 id="rrTitle">🏁</h2><ol class="rrlist" id="rrList"></ol><p class="info" id="rrInfo"></p>
+  <div class="pgrid"><button class="pbtn primary" id="rrAgain">↻ 다시</button><button class="pbtn" id="rrLobby">로비로</button></div></div></div>
+<div class="ov hide" id="rPause"><div class="pcard"><div class="tape"></div><h2>일시정지</h2><p class="info" id="rpInfo"></p>
+  <button class="pbtn primary" id="rpResume">▶ 이어하기</button><div class="pgrid"><button class="pbtn" id="rpSet">⚙ 설정</button><button class="pbtn" id="rpLeave">레이스 나가기</button></div></div></div>

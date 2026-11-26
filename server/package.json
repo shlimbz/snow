@@ -1,0 +1,10 @@
+{
+  "name": "usagi-race-server",
+  "version": "1.0.0",
+  "description": "우사기 스노우보드 멀티 레이스 서버 (의존성 없음)",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" },
+  "license": "UNLICENSED",
+  "private": true
+}
