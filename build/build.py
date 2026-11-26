@@ -41,19 +41,21 @@ patch("if(seg!==s.lastTreeSeg){s.lastTreeSeg=seg;if(hAbove<3)", "if(seg!==s.last
 patch("if(M.course)courseTick(dt);", "if(M.course)courseTick(dt);if(M.race)raceTick(dt);")
 patch("  spawnAhead();\n  const n=Math.max(1,", "  if(M.race&&raceHold(dt))return;spawnAhead();\n  const n=Math.max(1,")
 patch("if(MODE==='tutorial'){s.phase=phaseOf(s);tutUpdate(dt)}s.ev.length=0;", "if(MODE==='tutorial'){s.phase=phaseOf(s);tutUpdate(dt)}if(M.race)raceEvents();s.ev.length=0;")
+patch("function groundY(z,x){", "function groundY(z,x){if(M.race){const dp=raceDrop(z,x);if(dp)return baseY(z)-dp}")
+patch("s.x=r.x;s.heading=s.bal*.12;s.v*=Math.exp(-h*.04);", "s.x=r.x;s.heading=s.bal*.12;if(M.race)raceGrindTick(h);else s.v*=Math.exp(-h*.04);")
+patch(")*CH.grind*h;s.balV*=Math.exp(-h*BAL.damp*Math.sqrt(CH.grind));", ")*CH.grind*(M.race?.72:1)*h;s.balV*=Math.exp(-h*BAL.damp*Math.sqrt(CH.grind));")
+patch("cam.yaw=lerp(cam.yaw,s.heading*.32,1-Math.exp(-dt*3));", "cam.yaw=lerp(cam.yaw,M.race?raceCamYaw():s.heading*.32,1-Math.exp(-dt*(M.race?2.2:3)));")
+patch("cam.f=lerp(cam.f,CFG.focal*(HUD.portrait?.84:1)*(1-CFG.fovBoost*sp*(1+.25*(s.manualTuck||0))),1-Math.exp(-dt*2));", "cam.f=lerp(cam.f,CFG.focal*(HUD.portrait?.84:1)*(1-CFG.fovBoost*sp*(1+.25*(s.manualTuck||0)))*(M.race?raceFov():1),1-Math.exp(-dt*2));")
+patch("const p=proj(s.x,s.py,s.z),pg=proj(s.x,groundY(s.z,s.x),s.z);", "const p=proj(s.x,s.py,s.z),pg=proj(s.x,M.race?raceCamGround(s.z,s.x):groundY(s.z,s.x),s.z);")
+patch("const gyU=groundY(s.z,s.x),b0=baseY(s.z);", "const gyU=M.race?raceCamGround(s.z,s.x):groundY(s.z,s.x),b0=baseY(s.z);")
 patch("if(s.hitTime>=CH.crashT)", "if(s.hitTime>=CH.crashT*(M.race?.75:1))")
 patch("if(Math.abs(s.x-pisteCX(s.z))>CFG.halfW-3)s.x=pisteCX(s.z)+Math.sign(s.x-pisteCX(s.z))*(CFG.halfW-6);",
       "if(M.race)raceRecoverX();else if(Math.abs(s.x-pisteCX(s.z))>CFG.halfW-3)s.x=pisteCX(s.z)+Math.sign(s.x-pisteCX(s.z))*(CFG.halfW-6);")
 patch("if(!M.free){const ek=", "if(M.race){raceEnv();return}if(!M.free){const ek=")
-patch("lamps=M.free&&ENV.lamp>.03", "lamps=(M.free||M.race)&&ENV.lamp>.03")
-patch("put(j,{kind:'lamp',x:c-CFG.halfW-3,z,side:-1,col,j});put(j,{kind:'lamp',x:c+CFG.halfW+3,z,side:1,col,j})",
-      "put(j,{kind:'lamp',x:c-HWZ(z)-3,z,side:-1,col,j});put(j,{kind:'lamp',x:c+HWZ(z)+3,z,side:1,col,j})")
-patch("put(j,{kind:'pole',x:c-CFG.halfW-1.2,z});put(j,{kind:'pole',x:c+CFG.halfW+1.2,z})",
-      "put(j,{kind:'pole',x:c-HWZ(z)-1.2,z});put(j,{kind:'pole',x:c+HWZ(z)+1.2,z})")
+patch("if(!M.free){if(i%9===0&&!far)", "if(!M.free&&!M.race){if(i%9===0&&!far)")
 patch("if(M.free)for(const it of s.items)if(!it.got){const j=jOf(it.z);put(j,{kind:'item',o:it,z:it.z,j})}",
       "if(M.free||M.race)for(const it of s.items)if(!it.got){const j=jOf(it.z);put(j,{kind:'item',o:it,z:it.z,j})}if(M.race)raceBuckets(put,jOf);")
-patch("const hwA=CFG.halfW*a.s,hwB=CFG.halfW*b.s", "const hwA=HWZ(a.z)*a.s,hwB=HWZ(b.z)*b.s")
-patch("    if(fog<.9){ctx.strokeStyle='rgba(132,168,204,'", "    if(M.race)raceSurfSeg(a,b,fog);\n    if(fog<.9){ctx.strokeStyle='rgba(132,168,204,'")
+patch("const hwA=CFG.halfW*a.s,hwB=CFG.halfW*b.s,jd=(a.z-cam.z)/SEG;", "const hwA=CFG.halfW*a.s,hwB=CFG.halfW*b.s,jd=(a.z-cam.z)/SEG;if(M.race){raceDrawRoads(a,b,fog,tone,alt,jd);return}")
 patch("function drawSprite(sp){\n", "function drawSprite(sp){if(sp.race){raceDrawSprite(sp);return}\n")
 patch("for(const sp of near)sp.kind==='player'?drawSnowboardRig():drawSprite(sp);",
       "for(const sp of near)sp.kind==='player'?(M.race?raceDrawMe():drawSnowboardRig()):drawSprite(sp);")
@@ -83,7 +85,7 @@ shared = (SRC / 'shared.js').read_text(encoding='utf-8')
 names = 'ITEMS,ITEM_KEYS,ITEM_TABLE,NO_BALL_LAST,COURSE_META,COURSE_IDS,FINISH_WAIT,MAX_PLAYERS,REWARD,rankBucket,pickItem,rewardFor'
 mod = '\n// ===================== 멀티 레이스 모듈 (build.py 가 넣음) =====================\n'
 mod += 'const RSH=(()=>{\n' + shared + f'\nreturn{{{names}}}}})();\n'
-for f in ['race_courses.js', 'race_core.js', 'race_draw.js', 'race_net.js', 'race_ui.js']:
+for f in ['race_courses.js', 'race_core.js', 'race_fx.js', 'race_draw.js', 'race_net.js', 'race_ui.js']:
     mod += (SRC / f).read_text(encoding='utf-8') + '\n'
 init = "useChar(REC.char||'usagi');applySettings();openMenu();fitCanvas();requestAnimationFrame(loop);"
 patch(init, mod + init)

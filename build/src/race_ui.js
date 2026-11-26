@@ -74,7 +74,7 @@ setPaused=function(p){if(MODE!=='race'){_setPaused0(p);return}if(RACE.phase==='r
 // ---- 아이템 버튼 (점프 버튼 바로 위) · E 키 ----
 (()=>{const b=$('itemBtn');b.addEventListener('pointerdown',e=>{e.preventDefault();b.classList.add('down');raceUseItem()});['pointerup','pointercancel','pointerleave'].forEach(ev=>b.addEventListener(ev,()=>b.classList.remove('down')));b.addEventListener('contextmenu',e=>e.preventDefault())})();
 window.addEventListener('keydown',e=>{if(MODE!=='race'||e.repeat)return;const k=e.key.toLowerCase();if(k==='e'||k==='shift'||k==='x'){e.preventDefault();raceUseItem()}});
-let _ibKey='';function syncItemBtn(){const b=$('itemBtn');const key=MODE==='race'?(RACE.roul>0?'r'+Math.floor(game.time*14)%6:RACE.item||''):'off';if(key===_ibKey)return;_ibKey=key;
+let _ibKey='init';function syncItemBtn(){const b=$('itemBtn');const key=MODE==='race'?(RACE.roul>0?'r'+Math.floor(game.time*14)%6:RACE.item||''):'off';if(key===_ibKey)return;_ibKey=key;
   b.classList.toggle('hide',MODE!=='race');b.classList.toggle('has',!!RACE.item);b.classList.toggle('roul',RACE.roul>0);
   b.textContent=RACE.roul>0?RSH.ITEMS[RSH.ITEM_KEYS[Math.floor(game.time*14)%6]].e:RACE.item?RSH.ITEMS[RACE.item].e:'?'}
 function placeItemBtn(){const j=$('jumpBtn'),b=$('itemBtn'),st=$('stage');if(!j||!b||!st)return;const jr=j.getBoundingClientRect(),sr=st.getBoundingClientRect();if(!jr.width){b.style.removeProperty('left');return}

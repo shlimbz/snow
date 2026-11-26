@@ -1,6 +1,25 @@
 // =====================================================================
 //  멀티 레이스 · 그리기 (표면 · 상자 · 상대 · 아이템 · HUD)
 // =====================================================================
+// 길 그리기: 갈림길이면 길마다 따로 (drawSeg 에서 정설 사면 대신 호출)
+function raceDrawRoads(a,b,fog,tone,alt,jd){const A=raceRoads(a.z),B=raceRoads(b.z),groomed=true;
+  // 빈 곳(협곡·낭떠러지)을 먼저 어둡게 → 그 위에 길
+  raceVoidSeg(a,b,fog,A,B,'cliff');
+  for(let q=0;q<A.length;q++){const ra=A[q],rb=B[Math.min(q,B.length-1)],l0=a.x+(ra.o-ra.w)*a.s,r0=a.x+(ra.o+ra.w)*a.s,l1=b.x+(rb.o-rb.w)*b.s,r1=b.x+(rb.o+rb.w)*b.s;
+    ctx.beginPath();ctx.moveTo(l0,a.sy+.5);ctx.lineTo(r0,a.sy+.5);ctx.lineTo(r1,b.sy);ctx.lineTo(l1,b.sy);ctx.closePath();ctx.fillStyle=tone(alt?C_PISTE:C_PISTE2);ctx.fill();
+    if(jd<60){ctx.strokeStyle='rgba(146,184,218,'+(.2*(1-fog))+')';ctx.lineWidth=Math.max(.6,a.s*.06);ctx.beginPath();for(let f=-.85;f<=.86;f+=.17){ctx.moveTo(a.x+(ra.o+f*ra.w)*a.s,a.sy);ctx.lineTo(b.x+(rb.o+f*rb.w)*b.s,b.sy)}ctx.stroke()}}
+  raceVoidSeg(a,b,fog,A,B,'gap');raceSurfSeg(a,b,fog);
+  if(fog<.9){ctx.strokeStyle='rgba(132,168,204,'+(.32*(1-fog))+')';ctx.lineWidth=Math.max(1,a.s*.12);ctx.beginPath();
+    for(let q=0;q<A.length;q++){const ra=A[q],rb=B[Math.min(q,B.length-1)];ctx.moveTo(a.x+(ra.o-ra.w)*a.s,a.sy);ctx.lineTo(b.x+(rb.o-rb.w)*b.s,b.sy);ctx.moveTo(a.x+(ra.o+ra.w)*a.s,a.sy);ctx.lineTo(b.x+(rb.o+rb.w)*b.s,b.sy)}ctx.stroke()}}
+const C_VOID=[44,66,92],C_VOID2=[30,48,70];
+function raceVoidSeg(a,b,fog,A,B,only){const R=RACE.R,L=R.segSurf.get(a.i);if(!L)return;const za=a.z,zb=b.z;
+  const quad=(x0a,x1a,x0b,x1b,col)=>{ctx.beginPath();ctx.moveTo(a.x+x0a*a.s,a.sy+.5);ctx.lineTo(a.x+x1a*a.s,a.sy+.5);ctx.lineTo(b.x+x1b*b.s,b.sy);ctx.lineTo(b.x+x0b*b.s,b.sy);ctx.closePath();ctx.fillStyle=col;ctx.fill()};
+  const col=mixC(C_VOID,C_FOG,fog*.8);
+  for(const o of L){if(zb<o.z0||za>o.z1||o.k!==only)continue;
+    if(o.k==='gap'){const G=o.G,oa=roadOff(G.road,za),ob=roadOff(G.road,zb);quad(oa+G.a,oa+G.b,ob+G.a,ob+G.b,col);
+      if(za<=G.z0+SEG){ctx.strokeStyle='rgba(255,255,255,.9)';ctx.lineWidth=Math.max(1.5,a.s*.2);ctx.beginPath();ctx.moveTo(a.x+(oa+Math.max(G.a,-60))*a.s,a.sy);ctx.lineTo(a.x+(oa+Math.min(G.b,60))*a.s,a.sy);ctx.stroke()}}
+    else if(o.k==='cliff'){const Cf=o.Cf,lA=Math.min(...A.map(r=>r.o-r.w)),rA=Math.max(...A.map(r=>r.o+r.w)),lB=Math.min(...B.map(r=>r.o-r.w)),rB=Math.max(...B.map(r=>r.o+r.w));
+      if(Cf.side<=0)quad(lA-160,lA-.2,lB-160,lB-.2,col);if(Cf.side>=0)quad(rA+.2,rA+160,rB+.2,rB+160,col)}}}
 // 세그먼트 위 표면: 빙판 · 숨은 통로 · 가속 패드 · 출발선 · 결승선
 function raceSurfSeg(a,b,fog){const R=RACE.R,L=R.segSurf.get(a.i);if(!L)return;const za=a.z,zb=b.z,hwa=raceHW(za),hwb=raceHW(zb);
   const quad=(oa0,oa1,ob0,ob1,col)=>{ctx.beginPath();ctx.moveTo(a.x+oa0*a.s,a.sy+.5);ctx.lineTo(a.x+oa1*a.s,a.sy+.5);ctx.lineTo(b.x+ob1*b.s,b.sy);ctx.lineTo(b.x+ob0*b.s,b.sy);ctx.closePath();ctx.fillStyle=col;ctx.fill()};
@@ -9,7 +28,8 @@ function raceSurfSeg(a,b,fog){const R=RACE.R,L=R.segSurf.get(a.i);if(!L)return;c
     if(o.k==='start'||o.k==='fin'){const t0=clamp((o.z0-za)/(zb-za),0,1),t1=clamp((o.z1-za)/(zb-za),0,1),P=t=>({x:lerp(a.x,b.x,t),sy:lerp(a.sy,b.sy,t),s:lerp(a.s,b.s,t)}),A=P(t0),B=P(t1),hw=Math.min(hwa,hwb);if(A.sy-B.sy<.5)continue;
       const q2=(x0,x1,col)=>{ctx.beginPath();ctx.moveTo(A.x+x0*A.s,A.sy);ctx.lineTo(A.x+x1*A.s,A.sy);ctx.lineTo(B.x+x1*B.s,B.sy);ctx.lineTo(B.x+x0*B.s,B.sy);ctx.closePath();ctx.fillStyle=col;ctx.fill()};
       ctx.globalAlpha=1-fog*.5;if(o.k==='start')q2(-hw,hw,'#e0566a');else{const n=16;for(let q=0;q<n;q++){const x0=-hw+q*2*hw/n;q2(x0,x0+2*hw/n,q%2?'#22313b':'#ffffff')}}ctx.globalAlpha=1;continue}
-    if(o.k==='ice'){const A0=Math.max(o.a,-hwa),A1=Math.min(o.b,hwa),B0=Math.max(o.a,-hwb),B1=Math.min(o.b,hwb);if(A1<=A0)continue;
+    if(o.k==='ice'){const ra=raceRoads(za),rb=raceRoads(zb),qa=o.road!=null?ra[Math.min(o.road,ra.length-1)]:{o:0,w:hwa},qb=o.road!=null?rb[Math.min(o.road,rb.length-1)]:{o:0,w:hwb};
+      const A0=qa.o+Math.max(o.a,-qa.w),A1=qa.o+Math.min(o.b,qa.w),B0=qb.o+Math.max(o.a,-qb.w),B1=qb.o+Math.min(o.b,qb.w);if(A1<=A0)continue;
       ctx.globalAlpha=(1-fog)*.75;quad(A0+dA,A1+dA,B0+dB,B1+dB,(a.i%4<2)?'#bfe4fb':'#cdeafc');
       if(fog<.6&&a.i%5===0){ctx.strokeStyle='rgba(255,255,255,.75)';ctx.lineWidth=Math.max(1,a.s*.09);ctx.beginPath();const u=hash(a.i,7);ctx.moveTo(a.x+lerp(A0,A1,u)*a.s,a.sy);ctx.lineTo(b.x+lerp(B0,B1,u+.06)*b.s,b.sy);ctx.stroke()}ctx.globalAlpha=1}
     else if(o.k==='cor'){const H=o.H,sd=H.side,ent=hidOpen(H,za),ia=ent?hwa-.5:hwa+H.in,ib=ent?hwb-.5:hwb+H.in,oa=hwa+H.in+H.w,ob=hwb+H.in+H.w;
@@ -26,11 +46,14 @@ function raceBuckets(put,jOf){const s=game,R=RACE.R,zMax=cam.z+VIEW_DIST-4;
   for(const r of RACE.racers.values())if(r.id!==RACE.myId&&r.g&&r.g.z>cam.z+.8&&r.g.z<zMax)put(jOf(r.g.z),{race:1,kind:'riv',r,z:r.g.z});
   for(const p of RACE.projs)if(p.z>cam.z+.8&&p.z<zMax)put(jOf(p.z),{race:1,kind:'proj',p,z:p.z});
   for(const P of RACE.puddles)if(P.z>cam.z+.5&&P.z<zMax)put(jOf(P.z),{race:1,kind:'pud',P,z:P.z+1.5});
-  if(R.len>cam.z+6&&R.len<zMax)put(jOf(R.len),{kind:'arch',a:{z:R.len,text:'FINISH',col:'#fff',finish:true},z:R.len})}
+  if(R.len>cam.z+6&&R.len<zMax)put(jOf(R.len),{kind:'arch',a:{z:R.len,text:'FINISH',col:'#fff',finish:true},z:R.len});
+  // 길 가장자리 깃대 (가까운 곳) · 밤이면 랜턴
+  const z0=Math.ceil((cam.z+2)/18)*18,lamp=ENV.lamp>.03;for(let z=z0;z<cam.z+(lamp?VIEW_DIST-10:240);z+=18){const c=pisteCX(z),j=jOf(z),far=z>cam.z+240,cl=R.cliffs.some(Cf=>z>=Cf.z0&&z<=Cf.z1);
+    for(const r of raceRoads(z))for(const sd of [-1,1]){const x=c+r.o+sd*(r.w+(cl?.6:1.2));if(raceDrop(z,x)&&!cl)continue;if(!far)put(j,{kind:'pole',x,z});if(lamp&&Math.round(z/18)%2===0)put(j,{kind:'lamp',x:x+sd*1.8,z,side:sd,col:LAMP_COL[Math.round(z/36)%3],j})}}}
 function raceDrawSprite(sp){const nf=clamp((sp.z-cam.z-1.5)/(CFG.camBack-1.5),0,1),fogA=(1-clamp((sp.z-cam.z-120)/(460/ENV.fogK),0,.78))*(1-smooth(.85,1,(sp.z-cam.z)/VIEW_DIST));
   if(sp.kind==='riv'){drawRival(sp.r);return}
   const a=fogA*(sp.kind==='pud'?1:Math.max(nf,.001));if(a<=.01)return;ctx.globalAlpha=a;
-  if(sp.kind==='box')drawItemBox(sp.x,sp.z,sp.k);else if(sp.kind==='sign')drawSign(sp.o);else if(sp.kind==='proj')drawGhostBoard(sp.p);else if(sp.kind==='pud')drawPuddle(sp.P);
+  if(sp.kind==='box')drawItemBox(sp.x,sp.z,sp.k);else if(sp.kind==='sign')drawSign(sp.o);else if(sp.kind==='proj'){if(sp.p.k==='cloud')drawCloudProj(sp.p);else drawGhostBoard(sp.p)}else if(sp.kind==='pud')drawPuddle(sp.P);
   ctx.globalAlpha=1}
 // 아이템 상자: 둥실 떠서 도는 선물 상자 (반투명 + 무지개 테두리 + ?)
 function drawItemBox(x,z,k){const p=proj(x,baseY(z)+1.3,z),g=proj(x,baseY(z),z);if(!p||p.s<.6)return;const t=game.time,S=1.15*p.s,bob=Math.sin(t*3+k)*.12*p.s,cy=p.y+bob,rot=t*1.6+k;
@@ -53,6 +76,13 @@ function drawGhostBoard(pj){const y0=baseY(pj.z)+1+Math.sin(pj.t*8)*.15,p=proj(p
   const gr=ctx.createRadialGradient(0,0,S*.1,0,0,S*1.3);gr.addColorStop(0,'rgba(240,232,255,.9)');gr.addColorStop(1,'rgba(200,180,255,0)');ctx.fillStyle=gr;ctx.beginPath();ctx.arc(0,0,S*1.3,0,Math.PI*2);ctx.fill();
   ctx.fillStyle='rgba(248,244,255,.95)';ctx.strokeStyle='rgba(126,98,200,.9)';ctx.lineWidth=Math.max(1,S*.06);ctx.beginPath();ctx.ellipse(0,0,S*.95,S*.26,0,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.restore();ctx.globalAlpha=a;
   GLOWS.push({x:p.x,y:p.y,r:S*1.6,a:.35,g:1,o:-1})}
+// 폭설 구름: 둥실둥실 회색 구름 + 아래로 눈발
+function drawSnowCloud(x,y,S,t,a){if(S<2)return;ctx.save();ctx.globalAlpha*=a==null?1:a;ctx.fillStyle='rgba(120,136,160,.92)';const P=[[-.7,.05,.42],[-.25,-.18,.55],[.3,-.1,.5],[.72,.08,.38],[0,.12,.5]];
+  ctx.beginPath();for(const [dx,dy,r] of P){ctx.moveTo(x+dx*S+r*S,y+dy*S);ctx.arc(x+dx*S,y+dy*S,r*S,0,Math.PI*2)}ctx.fill();
+  ctx.fillStyle='rgba(200,212,230,.9)';ctx.beginPath();for(const [dx,dy,r] of P){ctx.moveTo(x+dx*S+r*.55*S,y+(dy-.12)*S);ctx.arc(x+dx*S,y+(dy-.12)*S,r*.55*S,0,Math.PI*2)}ctx.fill();
+  ctx.fillStyle='#fff';for(let i=0;i<10;i++){const u=((i*.37+t*1.6)%1),fx=x+((i*53)%100/100-.5)*1.5*S,fy=y+S*.4+u*S*1.6;ctx.globalAlpha*=1;ctx.beginPath();ctx.arc(fx+Math.sin(t*5+i)*S*.05,fy,Math.max(1,S*.05),0,Math.PI*2);ctx.fill()}
+  ctx.restore()}
+function drawCloudProj(p){const q=proj(p.x,baseY(p.z)+p.y,p.z);if(!q||q.s<.3)return;drawSnowCloud(q.x,q.y,q.s*1.8,p.t)}
 function drawPuddle(P){const y=baseY(P.z),pts=[];for(let i=0;i<10;i++){const a=i/10*Math.PI*2,q=proj(P.x+Math.cos(a)*RTUNE.puddleR*1.05,y+.03,P.z+Math.sin(a)*1.8);if(!q)return;pts.push(q)}
   ctx.fillStyle='rgba(150,210,248,.82)';ctx.strokeStyle='rgba(255,255,255,.9)';ctx.lineWidth=Math.max(1,pts[0].s*.08);ctx.beginPath();pts.forEach((q,i)=>i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y));ctx.closePath();ctx.fill();ctx.stroke();
   const c=proj(P.x-.4,y+.03,P.z+.3);if(c&&c.s>3){ctx.fillStyle='rgba(255,255,255,.8)';ctx.beginPath();ctx.ellipse(c.x,c.y,c.s*.45,c.s*.08,-.1,0,Math.PI*2);ctx.fill()}}
@@ -78,6 +108,7 @@ function drawRival(r){const g=r.g;if(!g)return;const t=g.time;
   const sc=g.scr;if(!sc)return;const hy=sc.y-CFG.riderH*sc.s*1.08;
   if(r.shield)drawShieldRing(sc.x,sc.y-CFG.riderH*sc.s*.5,sc.s/CFG.rigScale,t);
   if(r.rev){const k=sc.s/CFG.rigScale;ctx.font='900 '+clamp(k*.9,10,34)+'px system-ui';ctx.textAlign='center';ctx.fillText('❓',sc.x,hy-8);ctx.textAlign='left'}
+  if(r.cloud||r.cloudT>0){const k=sc.s/CFG.rigScale;drawSnowCloud(sc.x,hy-k*.9,k*1.3,g.time)}
   nameTag(r,sc.x,hy,sc.s/CFG.rigScale)}
 function nameTag(r,x,y,s){if(s<1.2)return;const fs=clamp(s*.42,9,15),txt=(RACE.order.indexOf(r)+1)+' '+r.name;ctx.font='900 '+fs+'px system-ui';const w=ctx.measureText(txt).width+fs;
   ctx.globalAlpha=clamp((s-1.2)/1.5,0,1)*.92;ctx.fillStyle=r.col;ctx.beginPath();ctx.roundRect?ctx.roundRect(x-w/2,y-fs*1.35,w,fs*1.5,fs*.75):ctx.rect(x-w/2,y-fs*1.35,w,fs*1.5);ctx.fill();
@@ -85,7 +116,8 @@ function nameTag(r,x,y,s){if(s<1.2)return;const fs=clamp(s*.42,9,15),txt=(RACE.o
 function raceDrawMe(){const s=game;
   if(s.ball>0){const top=drawSnowball(s.x,baseY(s.z),s.z,s.time,'#ff7a2f');const p=proj(s.x,baseY(s.z),s.z);if(p)s.scr={x:p.x,y:p.y,s:p.s*CFG.rigScale};
     if(Math.random()<.8&&top)for(let i=0;i<2;i++)emitSpray(top.x+rand(-60,60)*top.s*.02,top.y+top.s*3.2,rand(-160,160),-rand(40,160),rand(.3,.6),rand(3,7),true);return}
-  drawSnowboardRig();const sc=s.scr;if(!sc)return;const k=sc.s/CFG.rigScale,cy=sc.y-CFG.riderH*sc.s*.5;
+  drawSnowboardRig();drawBoostFlame();const sc=s.scr;if(!sc)return;const k=sc.s/CFG.rigScale,cy=sc.y-CFG.riderH*sc.s*.5;
+  if(s.cloudT>0)drawSnowCloud(sc.x,sc.y-CFG.riderH*sc.s*1.25,k*1.5,s.time);
   if(s.shieldT>0)drawShieldRing(sc.x,cy,k,s.time);
   if(s.revT>0){ctx.font='900 '+Math.round(clamp(k*1.1,16,46))+'px system-ui';ctx.textAlign='center';ctx.globalAlpha=.6+.4*Math.sin(s.time*10);ctx.fillText('❓',sc.x+Math.sin(s.time*6)*k*.4,sc.y-CFG.riderH*sc.s*1.15);ctx.globalAlpha=1;ctx.textAlign='left'}
   if(s.slipK>.2){ctx.save();ctx.globalAlpha=s.slipK*.6;ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.lineCap='round';for(let i=0;i<8;i++){const a=(i/8)*Math.PI*2+s.time*3,rx=k*1.4,ry=k*1.1,x=sc.x+Math.cos(a)*rx,y=cy+Math.sin(a)*ry*.6;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x,y+k*.8);ctx.stroke()}ctx.restore()}}
@@ -110,7 +142,7 @@ function raceUI(){const s=game,k=HUD.k,R=RACE.R;if(!R)return;ctx.save();ctx.text
     paperBegin(-wC/2,0,wC,44,{rot:-.012,seed:11});ctx.textAlign='left';ctx.font='900 12px system-ui';ctx.fillStyle=R.C.col;ctx.fillText(wC<230?R.C.emoji:R.C.emoji+' '+R.C.name,12,17);
     ctx.textAlign='right';ctx.fillStyle=INK;ctx.font='900 14px system-ui';ctx.fillText(fmtR(s.finished?s.finishT:RACE.phase==='count'?0:RACE.t),wC-12,18);
     const bx=12,by=27,bw=wC-24,bh=8;ctx.fillStyle='#e8eef2';ctx.fillRect(bx,by,bw,bh);ctx.strokeStyle=INK;ctx.lineWidth=2;ctx.strokeRect(bx,by,bw,bh);
-    for(const r of [...RACE.racers.values()].sort((a,b)=>a.id===RACE.myId?1:b.id===RACE.myId?-1:0)){const u=clamp(r.z/R.len,0,1),X=bx+bw*u,mine=r.id===RACE.myId;ctx.fillStyle=r.col;ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.beginPath();ctx.arc(X,by+bh/2,mine?7:5,0,Math.PI*2);ctx.fill();ctx.stroke()}
+    for(const r of [...RACE.racers.values()].sort((a,b)=>a.id===RACE.myId?1:b.id===RACE.myId?-1:0)){const u=clamp(r.z/R.len,0,1),X=bx+bw*u,mine=r.id===RACE.myId;drawFace(r,X,by+bh/2,mine?9:7,mine)}
     ctx.restore();ctx.restore()}
   // 오른쪽 위: 아이템 칸 + 속도
   ctx.save();ctx.translate(HUD.pr,HUD.t);ctx.scale(k,k);{const w=86,h=78;paperBegin(-w,0,w,h,{rot:.03,seed:5,fill:RACE.item?'#fff6e2':PAPER});
@@ -119,7 +151,10 @@ function raceUI(){const s=game,k=HUD.k,R=RACE.R;if(!R)return;ctx.save();ctx.text
     if(RACE.item&&!isTouchUI()){ctx.font='900 10.5px system-ui';ctx.fillStyle=INK2;ctx.fillText('E 키로 사용',w/2,72)}else if(RACE.item){ctx.font='900 10.5px system-ui';ctx.fillStyle=INK2;ctx.fillText(RSH.ITEMS[RACE.item].n,w/2,72,w-8)}ctx.restore();
     const kmh=Math.round(s.v*3.6),hot=s.capK>1.03;paperBegin(-98,h+10,98,26,{rot:-.035,seed:9,bw:3,sh:3,fill:hot?'#ffe2c6':PAPER});
     ctx.textAlign='right';ctx.fillStyle=hot?'#c4521c':INK;ctx.font='900 15px system-ui';ctx.fillText(kmh,58,18);ctx.textAlign='left';ctx.font='800 10px system-ui';ctx.fillStyle=INK2;ctx.fillText('km/h',62,18);ctx.restore()}ctx.restore();
+  // 왼쪽: 세로 미니맵 (가로 화면·PC)
+  if(!HUD.portrait){const top=HUD.t+(58+n*19+14)*k,mh=Math.min(250*k,H-HUD.b-top-120*k);if(mh>110*k)drawMiniMap(HUD.l+4*k,top,58*k,mh)}
   drawPopups();ctx.restore();
+  drawRearWarn();drawBoostScreen();
   // 카운트다운
   if(RACE.phase==='count'||(RACE.phase==='run'&&RACE.t<.8)){const c=RACE.phase==='count'?Math.ceil(RACE.cd):0,txt=RACE.phase==='count'?(c>3?'준비':String(c)):'GO!',fr=RACE.phase==='count'?RACE.cd-Math.floor(RACE.cd):1-RACE.t/.8;
     ctx.textAlign='center';sticker(txt,W/2,H*.42,txt==='GO!'?'#7ddc6a':'#ffe066',(70+fr*30)*k,'italic 900');ctx.textAlign='left';
