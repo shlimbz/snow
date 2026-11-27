@@ -24,8 +24,9 @@ const NO_BALL_LAST=200;   // 결승선 앞 마지막 200m 에서는 거대 눈�
 const COURSE_META={
   carrot:{name:'당근밭 슬로프',len:4400},
   ice:{name:'얼음 협곡',len:4600},
-  aurora:{name:'오로라 빅에어 피크',len:4800}};
-const COURSE_IDS=['carrot','ice','aurora'];
+  aurora:{name:'오로라 빅에어 피크',len:4800},
+  rainbow:{name:'무지개 스카이로드',len:5200}};
+const COURSE_IDS=['carrot','ice','aurora','rainbow'];
 const FINISH_WAIT=20;     // 1등 골인 후 남은 사람 대기 시간(초)
 const MAX_PLAYERS=4;
 // 순위 보상(당근): 인원수별 [1등,2등,…] + 완주 보너스. 레이스 중 먹은 당근은 따로 더함(최대 40)
