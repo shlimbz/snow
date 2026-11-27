@@ -76,7 +76,7 @@ function onMsg(p,txt){let m;try{m=JSON.parse(txt)}catch(_){return}if(!m||typeof 
   case'start':if(R&&!R.quick&&R.host===p.id)startRace(R);break;
   case's':{if(!R||!R.race||!Array.isArray(m.d)||m.d.length!==14)break;const st=R.race.st.get(p.id);if(!st)break;const z=+m.d[0];if(!isFinite(z))break;
     // 간단한 속도 검사: 이전 위치에서 비정상적으로 멀리 가면 무시
-    const now=Date.now(),dt=(now-(st.t||now))/1000;if(st.d&&z-st.z>Math.max(30,dt*95)&&(st.bad=(st.bad||0)+1)<20)break;st.bad=0;st.z=z;st.t=now;st.d=m.d.map(v=>typeof v==='number'&&isFinite(v)?v:0);break}
+    const now=Date.now(),dt=(now-(st.t||now))/1000;if(st.d&&z-st.z>Math.max(30,dt*95)&&(st.bad=(st.bad||0)+1)<20)break;st.bad=0;st.z=z;st.t=now;st.d=m.d.map(v=>typeof v==='number'&&isFinite(v)?v:0);st.ts=typeof m.ts==='number'&&isFinite(m.ts)&&m.ts>0?Math.round(m.ts):0;st.fresh=1;break}
   case'box':{if(!R||!R.race)break;const st=R.race.st.get(p.id);if(!st)break;const now=Date.now();if(now-st.boxT<800)break;st.boxT=now;const{rank,n}=rankOf(R,p.id);
     const k=S.pickItem(rank,n,st.z,S.COURSE_META[R.course].len);send(p.c,{t:'item',k});break}
   case'use':{if(!R||!R.race||!S.ITEM_KEYS.includes(m.k))break;bcast(R,{t:'use',id:p.id,k:m.k,z:+m.z||0,x:+m.x||0,tg:typeof m.tg==='string'?m.tg:null,v:+m.v||20});break}
@@ -88,7 +88,7 @@ function onMsg(p,txt){let m;try{m=JSON.parse(txt)}catch(_){return}if(!m||typeof 
 // ---------------- 주기 작업: 위치 중계 · 빠른 매칭 자동 출발 · 종료 판정 ----------------
 setInterval(()=>{const now=Date.now();for(const R of rooms.values()){
   if(R.state==='lobby'&&R.quick&&R.autoAt&&now>=R.autoAt&&R.order.length>=2)startRace(R);
-  try{if(R.race){const p=[];for(const [id,st] of R.race.st)if(st.d)p.push([id,st.d]);if(p.length)bcast(R,{t:'S',p});
+  try{if(R.race){const p=[];for(const [id,st] of R.race.st)if(st.d&&st.fresh){st.fresh=0;p.push(st.ts?[id,st.d,st.ts]:[id,st.d])}if(p.length)bcast(R,{t:'S',p});   // 새로 받은 상태만 중계(같은 위치 반복 X) + 보낸 쪽 시각 → 받는 쪽이 매끄럽게 보간
     if(R.race&&R.race.endAt&&now>=R.race.endAt)checkEnd(R);
     if(R.race&&now-R.race.go>8*60*1000)endRace(R)}}catch(e){console.error('tick',e)}}},TICK);
 // 연결 확인 (끊긴 연결 정리 · Render 프록시가 놀고 있는 연결을 닫지 않게)
