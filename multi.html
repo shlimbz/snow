@@ -935,6 +935,18 @@ function jumpUp(){const s=game;if(!s.jHeld)return;s.jHeld=false;if(s.jConsumed||
 // 백플립: 탭마다 360° 예약.  코크: 스핀 중(초당 150°↑) 탭 → 스핀은 다음 180° 단위까지, 플립은 360°를
 // '같은 시간에' 끝나도록 자동으로 맞춰 돈다(약 0.65초). 끝나면 각도가 이미 맞아 있으니, 착지 전에 끝나게만 누르면 됨.
 // 착지까지 남은 시간(경사면 기준 탄도 근사)
+// 레이스 공중 조작: 누르는 동안 그 방향으로 스핀 + 조향.
+// 떼거나 반대로 누르면 지금 돌던 반 바퀴를 마저 돌아 180° 단위로 맞춤(60° 미만이면 원래 자세로 복귀).
+// 착지 전에 못 끝내면 가까운 쪽으로 맞춰서 → 조향하다가 어중간한 각도로 착지 실패하는 일이 없음.
+function raceAirSpin(s,h,steer){
+  if(RACE.phase==='run')s.heading=clamp(s.heading+steer*RTUNE.airTurn*h,-.7,.7);
+  const st=Math.abs(steer)>.3?Math.sign(steer):0,rate=CFG.spinRate*(s.grabbing?.8:1),left=airLeft();
+  const nb=st>0?Math.floor(s.airSpin/180+1e-6)*180+180:Math.ceil(s.airSpin/180-1e-6)*180-180,room=left>Math.abs(nb-s.airSpin)/rate+.1;   // 다음 180°까지 돌 시간이 남았을 때만 계속 회전
+  if(st&&room&&(!s.spinDir||s.spinDir===st)&&(s.spinDir||left>.3)){s.spinDir=st;s.spinVel=lerp(s.spinVel,st*rate,1-Math.exp(-h*10));s.airSpin+=s.spinVel*h;
+    if(!s._airTip&&RACE.phase==='run'){s._airTip=1;popup('공중: 방향키 = 스핀+조향 · 떼면 자동으로 착지 자세','#d8f6ff','sys')}return}
+  const a=s.airSpin,dir=s.spinDir||Math.sign(s.spinVel)||0,base=dir>0?Math.floor(a/180+1e-6)*180:dir<0?Math.ceil(a/180-1e-6)*180:Math.round(a/180)*180;
+  let tgt=dir&&Math.abs(a-base)>=60?base+dir*180:base;if(Math.abs(tgt-a)/rate>left+.02)tgt=Math.round(a/180)*180;
+  const d=tgt-a,step=Math.sign(d)*Math.min(Math.abs(d),rate*h);s.airSpin+=step;s.spinVel=step/h;if(Math.abs(d)<.5){s.airSpin=tgt;s.spinVel=0;s.spinDir=0}}
 function airLeft(){const s=game;if(!s.air)return 0;if(s._alT===s.time)return s._alV;let y=s.py,vy=s.vy,z=s.z,x=s.x,t=0;const dz=s.vd,dx=s.v*Math.sin(s.heading),h=1/60;
   while(t<5){vy-=CFG.g*h;y+=vy*h;z+=dz*h;x+=dx*h;t+=h;if(y<=groundY(z,x))break}s._alT=s.time;s._alV=t;return t}
 // ---------------- 공중 트릭 데이터 ----------------
@@ -959,7 +971,7 @@ function queueFlip(kind){const s=game;const spinning=s.corking||Math.abs(s.spinV
     else s.corkSpinTarget+=(Math.sign(s.corkSpinTarget)||1)*360;
     s.flips.push(t);s.flipTarget-=360}
   else{s.flips.push(kind);s.flipTarget-=360}}
-function takeOff(extraVy,label,kind){const s=game;s.lastKind=kind||'roll';if(kind!=='roll')sfx('pop');s.ev.push({t:'takeoff',kind:kind||'roll',charge:s.charge});
+function takeOff(extraVy,label,kind){const s=game;s.spinDir=0;s.lastKind=kind||'roll';if(kind!=='roll')sfx('pop');s.ev.push({t:'takeoff',kind:kind||'roll',charge:s.charge});
   // 경사면 기준 상승 속도 상한: 차지+킥커+립 팝이 겹쳐도 과도하게 날아가지 않게
   {s.bigAir=s.kickKind==='big'||s.kickKind==='mega';s.megaAir=s.kickKind==='mega';const cap=s.kickKind==='mega'?CFG.maxLaunchMega:s.kickKind==='big'?CFG.maxLaunchBig:CFG.maxLaunchRel;s.kickKind='';const sl=baseSlope(s.z),rel=s.vy+extraVy+sl*s.vd;if(rel>cap)extraVy-=rel-cap;if(extraVy<0&&s.vy+sl*s.vd<=cap)extraVy=Math.max(extraVy,0)}
   // 이륙 전부터 누르던 키는 '잠금' → 놓았다 다시 눌러야 에어 트릭 입력으로 인정 (카빙하다 뛰어도 의도치 않은 회전/플립 없음)
@@ -1115,7 +1127,8 @@ function physicsStep(h){
     const vyG=(gy-s.py)/h;
     // 완만한 둔덕(롤러) 정점은 무릎으로 흡수해 지면에 붙어 감 → 고속에서 의도치 않게 계속 뜨지 않음. 킥커 립·절벽처럼 확 꺼질 때만 이륙.
     const kPrev=kickerAt(prevZ,s.x),rampHold=kPrev&&kPrev.smooth&&(s.py-gy)<.3;   // 통나무 진입 램프: 고속에서도 무릎으로 흡수하며 통나무 윗면까지 붙어 올라감
-    if(!rampHold&&vyG<s.vy-g*h*1.02&&s.v>3&&((s.vy-vyG)/h>g*2.3||(kPrev&&!kPrev.smooth))){const kObj=kickerAt(prevZ,s.x),kick=!!kObj;s.takeKick=kObj||null;s.kickKind=kObj&&kObj.mega?'mega':kObj&&kObj.big?'big':'';if(kObj&&kObj.big&&!s.air)popup(kObj.mega?'FINAL BIG AIR!!':'BIG AIR!','#ffcf8a');const chg=charging?s.charge:0,timed=s.loadT>0||s.jumpBuf>0||charging;
+    const rollOK=!M.race||kPrev||s.loadT>0||s.jumpBuf>0||charging||(s.py-gy)>.45||raceDrop(s.z,s.x)>0;   /* 레이스: 둔덕·뱅크·파이프에서 저절로 뜨지 않음 */
+    if(rollOK&&!rampHold&&vyG<s.vy-g*h*1.02&&s.v>3&&((s.vy-vyG)/h>g*2.3||(kPrev&&!kPrev.smooth))){const kObj=kickerAt(prevZ,s.x),kick=!!kObj;s.takeKick=kObj||null;s.kickKind=kObj&&kObj.mega?'mega':kObj&&kObj.big?'big':'';if(kObj&&kObj.big&&!s.air)popup(kObj.mega?'FINAL BIG AIR!!':'BIG AIR!','#ffcf8a');const chg=charging?s.charge:0,timed=s.loadT>0||s.jumpBuf>0||charging;
       const scR=kObj&&kObj.shortcut;s.vy-=g*h;s.py+=s.vy*h;takeOff(timed?(scR?3.9:CFG.ollieKickBonus*(.75+.25*chg)):0,scR&&timed?'🚀 숏컷 점프!':kick&&timed?'립 팝!':null,kick?(timed?'lip':'kick'):(timed?'ollie':'roll'));s.popAnim=(kick||timed)?.3:0}
     else{s.vy=vyG;s.py=gy;
       if(s.loadT>0){s.loadT-=h;if(s.loadT<=0){const ks=kickerAt(s.z,s.x),sc=ks&&ks.shortcut;takeOff(CFG.ollie+(sc?2.2:0),sc?'🚀 숏컷 점프!':null,sc?'shortcut':'ollie')}}}
@@ -1185,6 +1198,7 @@ function airTricks(h,steer){
     const rem=Math.abs(s.flipTarget-s.flip),tRem=Math.max(h,rem/CFG.corkFlipRate),step=(s.corkSpinTarget-s.airSpin)*Math.min(1,h/tRem);
     s.airSpin+=step;s.spinVel=step/h;
     if(rem<=.5){s.airSpin=s.corkSpinTarget;s.spinVel=0;s.corking=false;L.steer=Math.sign(Math.round(steer*1.6));L.mag=Math.abs(steer);L.low=undefined}}   // 누르던 키로 계속 돌지 않게 잠금
+  else if(M.race)raceAirSpin(s,h,steer);   /* 레이스: 방향키 = 스핀 + 조향, 떼면 180° 단위로 자동 마무리 */
   else{const sIn=L.steer?0:steer;s.spinVel=lerp(s.spinVel,sIn*CFG.spinRate*(s.grabbing?.8:1),1-Math.exp(-h*7));s.airSpin+=s.spinVel*h}
   if(s.airSpin>(s.spinMax||0))s.spinMax=s.airSpin;if(s.airSpin<(s.spinMin||0))s.spinMin=s.airSpin;
   if(s.spinStartT<0&&Math.abs(s.airSpin)>=45)s.spinStartT=s.airT;if(s.apexT<0&&s.vy+baseSlope(s.z)*s.vd<0)s.apexT=s.airT;   // 최고점 시각(레이트 판정)
@@ -5932,6 +5946,7 @@ for(const id in RCOURSES)RCOURSES[id].len=RSH.COURSE_META[id].len;   // 길이�
 // =====================================================================
 const RTUNE={
   charRace:{usagi:{maxV:1.02},chiikawa:{maxV:.985,accel:1.2,crashT:1.1}},   // 레이스 보정: 치이카와 = 최고속도는 낮지만 가속·회복이 빠른 가벼운 캐릭터
+  airTurn:.85,   // 레이스 공중 조향 속도(rad/s)
   bankK:125,bankPull:.3,wallPull:1.15,rollK:.8,
   carStat:.6,          // 레이스에서는 캐릭터 능력 차이를 60%만 반영 (패시브는 그대로)
   startV:8,            // GO 순간 출발 속도(m/s)
@@ -6124,7 +6139,7 @@ function raceCollect(it){const s=game;it.got=true;const v=runGain(it.gold?3:1);s
   const p=proj(it.x,baseY(it.z)+1.1+it.h,it.z);if(p)for(let i=0;i<(it.gold?16:8);i++){const a=Math.random()*Math.PI*2,sp=rand(60,200);s.sparks.push({x:p.x,y:p.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-65,life:rand(.35,.6),col:it.gold?'#ffe066':'#ff9a3c'})}}
 function raceEvents(){const s=game;if(RACE.phase!=='run')return;
   for(const e of s.ev){
-    if(e.t==='land'&&e.clean){const k=clamp((e.spin||0)/360*.28+((e.backs||0)+(e.corks||0))*.38+(e.grab?.2:0)+Math.min(.18,Math.max(0,(e.airT||0)-.6)*.06),0,1);   // 체공만으론 작은 부스트, 트릭을 넣어야 큰 부스트
+    if(e.t==='land'&&e.clean){const k=clamp(Math.min((e.spin||0)/360*.22,.33)+((e.backs||0)+(e.corks||0))*.38+(e.grab?.2:0)+Math.min(.18,Math.max(0,(e.airT||0)-.6)*.06),0,1);   // 체공만으론 작은 부스트, 트릭을 넣어야 큰 부스트
       if(k>=.15||(e.airT||0)>1){const m=Math.max(.2,k);s.boostT=Math.max(s.boostT,.45+.75*m);s.boostCap=Math.max(s.boostCap,.06+.08*m);s.boostA=Math.max(s.boostA,8+10*m);s.capK=Math.max(s.capK,1+s.boostCap*.6);raceBoostFx('trick',m>.6);popup(m>.6?'🔥 트릭 부스트!!':'✨ 트릭 부스트','#bfe9ff')}}
     else if(e.t==='grind'){raceBoost('grind',e.perfect?1.4:1);popup(e.perfect?'🌟 퍼펙트 그라인드 부스트!':'✨ 그라인드 부스트','#ffe066')}}}
 function raceFinishMe(){const s=game;s.finished=true;s.finishT=RACE.t;s.jHeld=false;s.charge=0;const me=RACE.racers.get(RACE.myId);
