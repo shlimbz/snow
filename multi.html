@@ -517,7 +517,7 @@ const kH=(k,t)=>k.H*(k.smooth?t*t*(3-2*t):t*t),kD=(k,t)=>k.H*(k.smooth?6*t*(1-t)
 const RAIL={h:.9,r:.5,hw:.85,ramp:7.5};
 function railX(r,z){if(!r.follow)return r.x;const zz=clamp(z,r.z0-RAIL.ramp,r.z1);return pisteCX(zz)+(r.hid?hidX(zz):roadOff(r.road,zz)+(r.off||0))}
 function railAt(z,x){const rs=game.rails;if(!rs||!rs.length)return null;for(let i=0;i<rs.length;i++){const r=rs[i];if(z>r.z0&&z<=r.z1&&Math.abs(x-railX(r,z))<=RAIL.hw)return r}return null}
-function groundY(z,x,py){const b=baseY(z);if(M.race){const lg=raceLedgeAt(z,x,py!=null?py:(game?game.py:b));if(lg)return b+lg.h;const dp=raceDrop(z,x);if(dp)return b-dp}const k=kickerAt(z,x);let y=M.race?b+raceSurfH(z,x):b;if(k)y+=kH(k,(z-k.z)/k.L);else if(railAt(z,x))y+=RAIL.h;return y}
+function groundY(z,x,py){const b=baseY(z);if(M.race){const lg=raceLedgeAt(z,x,py!=null?py:(game?game.py:b));if(lg)return b+LH(lg,z);const dp=raceDrop(z,x);if(dp)return b-dp}const k=kickerAt(z,x);let y=M.race?b+raceSurfH(z,x):b;if(k)y+=kH(k,(z-k.z)/k.L);else if(railAt(z,x))y+=RAIL.h;return y}
 function slopeAt(z,x){const k=kickerAt(z,x);let s=baseSlope(z);if(k)s-=kD(k,(z-k.z)/k.L);return s}
 // 나무 배치는 세그먼트별로 결정론적 → 결과를 캐시해 매 프레임 객체 생성/해시 계산을 없앰
 //  o.t = 나무 종류(0 큰 나무 · 1 중간 · 2 작은 나무), o.h = 높이(m), o.w = 폭, o.hb = 줄기 반폭(히트박스)
@@ -1100,8 +1100,9 @@ function physicsStep(h){
     if(net>0)net*=CH.accel;   // 캐릭터 가속 배율
     if(s.dashT>0){s.dashT-=h;if(!s.air){net+=s.dashA*Math.min(1,s.dashT/.35+.3);if(s.scr&&Math.random()<.7)s.sparks.push({x:s.scr.x+rand(-34,34)*s.scr.s,y:s.scr.y+rand(-8,4),vx:rand(-70,70),vy:rand(30,110),life:.32,col:Math.random()<.5?'#ffcf5a':'#ff8a3c'})}s.dashK=1}else if(s.dashK>0)s.dashK=Math.max(0,s.dashK-h/1.4);   // 우사기 야하! 대시: 최고속도 +12%까지, 끝나면 1.4초에 걸쳐 원래 상한으로
     if(M.race)net+=raceAccel(h);s.v=clamp(s.v+net*h,0,CFG.maxSpeed*(1+.12*(s.dashK||0))*(M.race?raceCap():1));
-    s.vd=s.v*Math.cos(s.heading);
-    s.z+=s.vd*h;s.x+=s.v*Math.sin(s.heading)*h;
+    if(M.race){if(s.mvH==null)s.mvH=s.heading;s.mvH=(s.ice&&!s.air&&!s.grindR)?lerp(s.mvH,s.heading,1-Math.exp(-h*RTUNE.iceSlip)):s.heading}const mh=M.race?s.mvH:s.heading;   /* 빙판: 미끄러짐 */
+    s.vd=s.v*Math.cos(mh);
+    s.z+=s.vd*h;s.x+=s.v*Math.sin(mh)*h;
     if(M.free||M.race){const tw=(s.hitTime<0&&!s.grindR&&!s.finished)?(s.wind||0)*(s.air?WIND.air:WIND.ground):0;s.windVx=(s.windVx||0)+(tw-(s.windVx||0))*Math.min(1,h*WIND.resp);s.x+=s.windVx*h}   // 눈보라: 바람 방향으로 옆으로 밀림(공중에선 더 많이)
   }
   // 킥커 측면 벽: 옆에서 들어올 때 벽 높이가 발보다 0.4m 이상 높으면 막힘(빠르고 높으면 넘어짐). 낮으면 올라탐.
@@ -1129,7 +1130,7 @@ function physicsStep(h){
     const kPrev=kickerAt(prevZ,s.x),rampHold=kPrev&&kPrev.smooth&&(s.py-gy)<.3;   // 통나무 진입 램프: 고속에서도 무릎으로 흡수하며 통나무 윗면까지 붙어 올라감
     const rollOK=!M.race||kPrev||s.loadT>0||s.jumpBuf>0||charging||(s.py-gy)>.45||raceDrop(s.z,s.x)>0;   /* 레이스: 둔덕·뱅크·파이프에서 저절로 뜨지 않음 */
     if(rollOK&&!rampHold&&vyG<s.vy-g*h*1.02&&s.v>3&&((s.vy-vyG)/h>g*2.3||(kPrev&&!kPrev.smooth))){const kObj=kickerAt(prevZ,s.x),kick=!!kObj;s.takeKick=kObj||null;s.kickKind=kObj&&kObj.mega?'mega':kObj&&kObj.big?'big':'';if(kObj&&kObj.big&&!s.air)popup(kObj.mega?'FINAL BIG AIR!!':'BIG AIR!','#ffcf8a');const chg=charging?s.charge:0,timed=s.loadT>0||s.jumpBuf>0||charging;
-      const scR=kObj&&kObj.shortcut;s.vy-=g*h;s.py+=s.vy*h;takeOff(timed?(scR?3.9:CFG.ollieKickBonus*(.75+.25*chg)):0,scR&&timed?'🚀 숏컷 점프!':kick&&timed?'립 팝!':null,kick?(timed?'lip':'kick'):(timed?'ollie':'roll'));s.popAnim=(kick||timed)?.3:0}
+      const scR=kObj&&kObj.shortcut,spR=kObj&&kObj.spring;if(spR)popup('🌀 스프링!','#d6ffe0');s.vy-=g*h;s.py+=s.vy*h;takeOff((spR?RTUNE.springVy:0)+(timed?(scR?3.9:CFG.ollieKickBonus*(.75+.25*chg)):0),scR&&timed?'🚀 숏컷 점프!':kick&&timed?'립 팝!':null,kick?(timed?'lip':'kick'):(timed?'ollie':'roll'));s.popAnim=(kick||timed)?.3:0}
     else{s.vy=vyG;s.py=gy;
       if(s.loadT>0){s.loadT-=h;if(s.loadT<=0){const ks=kickerAt(s.z,s.x),sc=ks&&ks.shortcut;takeOff(CFG.ollie+(sc?2.2:0),sc?'🚀 숏컷 점프!':null,sc?'shortcut':'ollie')}}}
   }
@@ -2024,7 +2025,14 @@ function drawSprite(sp){if(sp.race){raceDrawSprite(sp);return}
     ctx.globalAlpha=1}
   else if(sp.kind==='kick')drawKicker(sp.k);
 }
-function drawKicker(k){
+function drawSpringPad(k){const y=baseY(k.z+k.L/2),zc=k.z+k.L/2,p=proj(k.x,y+.25,zc),L=proj(k.x-k.w/2,y+.25,zc),Rr=proj(k.x+k.w/2,y+.25,zc),b=proj(k.x,y,zc);if(!p||!L||!Rr||!b||p.s<.3)return;
+  const rx=(Rr.x-L.x)/2,ry=Math.max(2,rx*.32),t=game.time,sq=1+Math.sin(t*9)*.06;
+  ctx.fillStyle='rgba(30,60,40,.25)';ctx.beginPath();ctx.ellipse(b.x,b.y,rx*1.05,ry*1.05,0,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#5b6b75';ctx.lineWidth=Math.max(1.5,p.s*.08);for(let i=-1;i<=1;i+=2){ctx.beginPath();for(let k2=0;k2<=6;k2++){const yy=b.y-(b.y-p.y)*k2/6;ctx.lineTo(p.x+i*rx*.55+(k2&1?4:-4)*p.s*.04,yy)}ctx.stroke()}
+  ctx.fillStyle='#5fd47a';ctx.strokeStyle='#2d5b3a';ctx.lineWidth=Math.max(1.5,p.s*.1);ctx.beginPath();ctx.ellipse(p.x,p.y,rx*sq,ry*sq,0,0,Math.PI*2);ctx.fill();ctx.stroke();
+  ctx.fillStyle='#d8ffe0';ctx.beginPath();ctx.ellipse(p.x,p.y,rx*.55*sq,ry*.55*sq,0,0,Math.PI*2);ctx.fill();
+  if(p.s>1.2){ctx.fillStyle='#2d5b3a';ctx.font='900 '+Math.max(8,ry*1.1)+'px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('🌀',p.x,p.y);ctx.textAlign='left';ctx.textBaseline='alphabetic'}}
+function drawKicker(k){if(k.spring)return drawSpringPad(k);
   const N=8,L=[],R=[],BL=[],BR=[];
   // 카메라 뒤로 넘어간 부분은 잘라내고 보이는 구간만 그림 (예전엔 램프 시작점이 카메라 뒤로 가면 킥커 전체가 사라졌음)
   const t0=clamp((cam.z+.6-k.z)/k.L,0,1);if(t0>=1)return;
@@ -5765,8 +5773,9 @@ const COURSE_META={
   carrot:{name:'당근밭 슬로프',len:4400},
   ice:{name:'얼음 협곡',len:4600},
   aurora:{name:'오로라 빅에어 피크',len:4800},
-  rainbow:{name:'무지개 스카이로드',len:5200}};
-const COURSE_IDS=['carrot','ice','aurora','rainbow'];
+  rainbow:{name:'무지개 스카이로드',len:5200},
+  gp:{name:'그랑프리 캐년',len:5000}};
+const COURSE_IDS=['carrot','ice','aurora','rainbow','gp'];
 const FINISH_WAIT=20;     // 1등 골인 후 남은 사람 대기 시간(초)
 const MAX_PLAYERS=4;
 // 순위 보상(당근): 인원수별 [1등,2등,…] + 완주 보너스. 레이스 중 먹은 당근은 따로 더함(최대 40)
@@ -5805,17 +5814,17 @@ const RCOURSES={
       {t:'cave',z0:1550,z1:1880,kind:'earth',h:7.8},
       {t:'line',z:1580,at:0,n:12,amp:5,gold:2},{t:'pad',z:1680,at:-6},{t:'pad',z:1790,at:6},
       // ③ 고지대 점프 숏컷! (오른쪽 JUMP 램프에서 점프 성공 → 고지대 고속 패드+황금당근 / 실패 → 아래 일반 도로)
-      {t:'sign',z:1945,at:11,text:'▲ 점프! 고지대 숏컷'},{t:'sign',z:1945,at:-10,text:'▼ 일반 길 (통나무)'},
-      {t:'kick',z:1985,at:11,kind:'shortcut',w:9},
-      {t:'ledge',z0:2012,z1:2330,at:12,w:5.6,h:2.45},
-      {t:'pad',z:2065,at:12,h:2.45},{t:'pad',z:2190,at:12,h:2.45},{t:'line',z:2045,at:12,n:14,amp:0,h:2.45,gold:3},
+      {t:'sign',z:1945,at:6,text:'🌀 스프링 → 오른쪽 고지대'},{t:'sign',z:1945,at:-10,text:'▼ 일반 길 (통나무)'},
+      {t:'kick',z:1988,at:5,kind:'spring',w:4.5},
+      {t:'ledge',z0:2012,z1:2330,at:19.5,w:4.5,h:1.6},
+      {t:'pad',z:2065,at:19.5,h:1.6},{t:'pad',z:2190,at:19.5,h:1.6},{t:'line',z:2045,at:19.5,n:14,amp:0,h:1.6,gold:3},
       {t:'log',z:2080,a:-24,b:-3},{t:'log',z:2175,a:-14,b:4},{t:'log',z:2265,a:-24,b:-4},{t:'pad',z:2230,at:-10},
       {t:'box',z:2470},
       {t:'kick',z:2600,at:0,kind:'big'},{t:'kick',z:2600,at:-14},{t:'kick',z:2600,at:14},
       // ④ 협곡 점프 vs 안전한 나무숲
       {t:'sign',z:2740,at:-7,text:'◀ 협곡 점프 (고속)'},{t:'sign',z:2740,at:7,text:'당근 숲길 (안전) ▶'},
       {t:'split',z0:2800,z1:3320,at:[0],dw:4,widen:10},
-      {t:'kick',z:2862,at:-19,kind:'big',w:15},{t:'gap',z0:2884,z1:2924,a:-36,b:-4.5},{t:'pad',z:2990,at:-19},{t:'pad',z:3150,at:-19},
+      {t:'kick',z:2862,at:-19,kind:'big',w:11,H:2.2},{t:'gap',z0:2884,z1:2924,a:-36,b:-4.5,land:{at:-13.5,w:5,L:80}},{t:'pad',z:2975,at:-13.5},{t:'pad',z:3150,at:-19},
       {t:'tree',z:2880,at:15},{t:'tree',z:2950,at:23},{t:'tree',z:3020,at:13},{t:'tree',z:3100,at:22},{t:'tree',z:3180,at:14},{t:'pad',z:3060,at:19},{t:'pad',z:3230,at:18},
       {t:'line',z:2860,at:19,n:12,amp:4},
       {t:'box',z:3460},
@@ -5856,7 +5865,7 @@ const RCOURSES={
       {t:'fork',z0:2840,z1:3500,ramp:170,roads:[{o:-48,w:12},{o:6,w:11,short:true}]},
       {t:'cave',z0:2970,z1:3350,road:0,kind:'ice',h:7.6},
       {t:'ice',z0:2920,z1:3420,road:0,a:-12,b:12},{t:'pad',z:2980,road:0,at:0},{t:'pad',z:3130,road:0,at:0},{t:'pad',z:3280,road:0,at:0},{t:'line',z:3000,road:0,at:0,n:10,amp:3},
-      {t:'kick',z:3020,road:1,at:0,kind:'big',w:15},{t:'gap',z0:3042,z1:3090,road:1,a:-14,b:14},{t:'pad',z:3200,road:1,at:0},{t:'line',z:3240,road:1,at:0,n:8,amp:3},
+      {t:'kick',z:3020,road:1,at:-5,kind:'big',w:10,H:2.2},{t:'gap',z0:3042,z1:3090,road:1,a:-14,b:14,land:{at:7,w:5,L:85}},{t:'pad',z:3200,road:1,at:0},{t:'line',z:3240,road:1,at:0,n:8,amp:3},
       {t:'sign',z:3540,at:0,text:'◀ 빙판 · 곡선 레일 ▶'},
       {t:'split',z0:3600,z1:3980,at:[0],dw:3.6,widen:8},
       {t:'ice',z0:3640,z1:3960,a:-40,b:-4},{t:'pad',z:3740,at:-16},{t:'pad',z:3880,at:-16},
@@ -5875,7 +5884,7 @@ const RCOURSES={
       {t:'sign',z:555,at:-10,text:'◀ 오로라 숲길 (안전·패드)'},{t:'sign',z:555,at:10,text:'메가 협곡 ▶'},
       {t:'fork',z0:610,z1:1320,ramp:170,roads:[{o:-48,w:13},{o:6,w:12,short:true}]},
       {t:'rail',z:770,road:0,at:0,L:46},{t:'rail',z:900,road:0,at:0,L:46},{t:'pad',z:1040,road:0,at:-3},{t:'pad',z:1040,road:0,at:3},{t:'line',z:1090,road:0,at:0,n:8,amp:3},
-      {t:'kick',z:760,road:1,at:0,kind:'mega',w:20},{t:'gap',z0:786,z1:844,road:1,a:-15,b:15},{t:'pad',z:930,road:1,at:0},{t:'pad',z:1060,road:1,at:0},
+      {t:'kick',z:760,road:1,at:2,kind:'mega',w:12,H:3.8},{t:'gap',z0:786,z1:844,road:1,a:-15,b:15,land:{at:-5,w:5,L:80,ea:-30,eb:40}},{t:'pad',z:930,road:1,at:0},{t:'pad',z:1060,road:1,at:0},
       {t:'kick',z:1380,at:-15,kind:'nat'},{t:'kick',z:1420,at:5,kind:'nat'},{t:'kick',z:1460,at:-5,kind:'nat'},{t:'kick',z:1505,at:14,kind:'nat'},
       {t:'kick',z:1555,at:-12,kind:'nat'},{t:'kick',z:1600,at:8,kind:'nat'},{t:'kick',z:1650,at:-2,kind:'nat'},
       {t:'box',z:1770},
@@ -5890,7 +5899,7 @@ const RCOURSES={
       {t:'box',z:2880},
       // ③ 대협곡 점프
       {t:'sign',z:2950,at:0,text:'⚠ 대협곡! 속도 내서 점프'},
-      {t:'kick',z:3000,at:0,kind:'big',w:52},{t:'gap',z0:3022,z1:3056,a:-300,b:300},
+      {t:'kick',z:3000,at:0,kind:'big',w:14,H:2.2},{t:'gap',z0:3022,z1:3056,a:-300,b:300,land:{at:-8,w:5,L:70}},
       {t:'sign',z:3150,at:0,text:'◀ 곡선 레일 · 가속 패드 ▶'},
       {t:'split',z0:3220,z1:3720,at:[0],dw:3.6,widen:9},
       {t:'rail',z:3285,at:-18,L:48},{t:'rail',z:3430,at:-18,L:48},
@@ -5901,6 +5910,60 @@ const RCOURSES={
       {t:'narrow',z0:4060,z1:4420,hw:11.5},{t:'cliff',z0:4055,z1:4425,side:0},
       {t:'kick',z:4140,at:0,kind:'big'},{t:'line',z:4260,at:0,n:8,amp:4},
       {t:'pad',z:4560,at:0}]},
+  gp:{id:'gp',name:'그랑프리 캐년',emoji:'🏁',env:'sunset',col:'#ff7a3d',camFollow:true,grail:true,noBank:true,
+    desc:'고가도로 X자 교차 · 붉은 협곡 · 빙판 호수 · 대시 링 · 스프링 숏컷',
+    slope:28,pitch:10.2,hw:14,pcx:[12,6],maxSpeed:47,len:5000,
+    curves:[[220,440,22],[440,660,-26],[1960,2140,12],[2140,2330,-14],[3620,3780,20],[3780,3940,-22]],
+    F:[
+      {t:'line',z:110,at:0,n:8,amp:5},{t:'box',z:170},
+      // ① 방호벽 S커브
+      {t:'sign',z:190,at:0,text:'🏁 S커브 · 방호벽'},
+      {t:'guard',z0:220,z1:660},{t:'pad',z:330,at:-6},{t:'pad',z:550,at:6},{t:'line',z:420,at:0,n:10,amp:5},
+      {t:'box',z:700},
+      // ② X자 고가 교차로: 왼쪽 길은 다리로 올라가 오른쪽으로, 오른쪽 길은 다리 밑을 지나 왼쪽으로!
+      {t:'sign',z:735,at:-9,text:'◀ 고가도로 · 대시 링'},{t:'sign',z:735,at:9,text:'아랫길 · 가속 패드 ▶'},
+      {t:'fork',z0:770,z1:1420,ramp:120,roads:[{o:-18,o1:18,w:8},{o:18,o1:-18,w:8}]},
+      {t:'ledge',bridge:true,road:0,at:0,z0:890,z1:1300,w:8.2,h:8,climb:95},
+      {t:'ring',z:1045,road:0,at:0,h:9.7},{t:'ring',z:1095,road:0,at:0,h:9.7},{t:'ring',z:1145,road:0,at:0,h:9.7},
+      {t:'pad',z:985,road:1,at:0},{t:'pad',z:1205,road:1,at:0},{t:'line',z:1060,road:1,at:0,n:10,amp:3,gold:2},
+      {t:'box',z:1480},
+      // ③ 협곡 점프 + 대시 링 (좁은 착지대!)
+      {t:'sign',z:1545,at:0,text:'⚠ 협곡 점프 · 착지대 왼쪽'},
+      {t:'kick',z:1590,at:4,kind:'big',w:10,H:2.2},{t:'gap',z0:1612,z1:1650,a:-34,b:34,land:{at:-6,w:5,L:70}},
+      {t:'ring',z:1632,at:-3,h:8.2},{t:'ring',z:1660,at:-6.5,h:10.2},
+      {t:'pad',z:1700,at:-6},
+      // ④ 좁은 붉은 협곡 (벽에 부딪히면 감속!)
+      {t:'sign',z:1850,at:0,text:'⚠ 좁은 협곡'},
+      {t:'narrow',z0:1905,z1:2400,hw:6.5},{t:'cwall',z0:1900,z1:2405,h:11},{t:'guard',z0:1905,z1:2400,noDraw:true},
+      {t:'pad',z:2010,at:-2.5},{t:'pad',z:2130,at:2.5},{t:'pad',z:2260,at:-2.5},{t:'line',z:1950,at:0,n:10,amp:3},{t:'line',z:2300,at:0,n:8,amp:3,gold:2},
+      {t:'box',z:2470},
+      // ⑤ 빙판 호수 (미끄러움! 얼음 바위 섬 사이로)
+      {t:'sign',z:2520,at:0,text:'🧊 빙판 호수 · 미끄러움!'},
+      {t:'split',z0:2560,z1:3060,at:[],dw:0,widen:14},{t:'ice',z0:2560,z1:3060,a:-60,b:60},
+      {t:'tree',z:2640,at:-8},{t:'tree',z:2700,at:11},{t:'tree',z:2760,at:-15},{t:'tree',z:2790,at:3},{t:'tree',z:2865,at:16},{t:'tree',z:2900,at:-6},{t:'tree',z:2960,at:9},{t:'tree',z:3000,at:-17},
+      {t:'pad',z:2730,at:-2},{t:'pad',z:2930,at:2},{t:'box',z:2825},{t:'line',z:2585,at:0,n:8,amp:6},
+      // ⑥ 스프링 숏컷 → 오른쪽 절벽길
+      {t:'sign',z:3110,at:6,text:'🌀 스프링 → 오른쪽 절벽길'},{t:'sign',z:3110,at:-7,text:'▼ 일반 길 (통나무)'},
+      {t:'kick',z:3160,at:6,kind:'spring',w:4.5},
+      {t:'ledge',z0:3185,z1:3480,at:18.5,w:4.5,h:1.8},
+      {t:'pad',z:3240,at:18.5,h:1.8},{t:'pad',z:3380,at:18.5,h:1.8},{t:'line',z:3210,at:18.5,n:14,amp:0,h:1.8,gold:3},
+      {t:'log',z:3260,a:-14,b:4},{t:'log',z:3360,a:-4,b:14},{t:'log',z:3440,a:-14,b:3},
+      {t:'box',z:3560},
+      // ⑦ 시케인 (방호벽)
+      {t:'guard',z0:3620,z1:3940},{t:'pad',z:3700,at:-5},{t:'pad',z:3860,at:5},
+      // ⑧ 메가 점프 + 대시 링 3연속
+      {t:'sign',z:3975,at:0,text:'💫 메가 점프 · 링을 지나 오른쪽 착지'},
+      {t:'kick',z:4010,at:-4,kind:'mega',w:10,H:3.8},{t:'gap',z0:4036,z1:4082,a:-34,b:34,land:{at:6,w:5,L:80}},
+      {t:'ring',z:4052,at:-1.5,h:9},{t:'ring',z:4072,at:4.8,h:8.5},{t:'ring',z:4092,at:7,h:4.8},
+      {t:'box',z:4200},
+      // ⑨ 두 번째 X자 교차로 (이번엔 왼쪽 길이 다리 밑으로!)
+      {t:'sign',z:4235,at:-9,text:'◀ 아랫길 · 가속 패드'},{t:'sign',z:4235,at:9,text:'고가도로 · 대시 링 ▶'},
+      {t:'fork',z0:4270,z1:4870,ramp:110,roads:[{o:-18,o1:18,w:8},{o:18,o1:-18,w:8}]},
+      {t:'ledge',bridge:true,road:1,at:0,z0:4380,z1:4760,w:8.2,h:8,climb:90},
+      {t:'ring',z:4525,road:1,at:0,h:9.7},{t:'ring',z:4570,road:1,at:0,h:9.7},{t:'ring',z:4615,road:1,at:0,h:9.7},
+      {t:'pad',z:4470,road:0,at:0},{t:'pad',z:4670,road:0,at:0},{t:'line',z:4540,road:0,at:0,n:10,amp:3,gold:2},
+      {t:'pad',z:4910,at:0},{t:'line',z:4930,at:0,n:8,amp:4}
+    ]},
   rainbow:{id:'rainbow',name:'무지개 스카이로드',emoji:'🌈',env:'night',col:'#ff6fd0',rainbow:true,space:true,camFollow:true,
     desc:'우주에 뜬 무지개 길 · 뱅크 커브 · 하프파이프 벽타기 · 우주 점프',
     slope:29,pitch:10.4,hw:13,pcx:[5,2],maxSpeed:48,len:5200,
@@ -5916,8 +5979,8 @@ const RCOURSES={
       {t:'pipe',z0:820,z1:1130},
       {t:'pad',z:900,at:0},{t:'line',z:960,at:0,n:10,amp:0},{t:'pad',z:1060,at:0},
       {t:'sign',z:1165,at:-17,text:'⚠ 우주 점프! 속도 내서'},
-      {t:'kick',z:1190,at:0,kind:'big',w:26},{t:'gap',z0:1214,z1:1252,a:-40,b:40},
-      {t:'box',z:1300},
+      {t:'kick',z:1190,at:-5,kind:'big',w:10,H:2.2},{t:'gap',z0:1214,z1:1252,a:-40,b:40,land:{at:7,w:5,L:70}},
+      {t:'box',z:1338},
       {t:'sign',z:1330,at:-24,text:'◀ 난간 있는 길'},{t:'sign',z:1330,at:24,text:'좁은 지름길 · 패드 ▶'},
       {t:'fork',z0:1360,z1:1900,ramp:150,roads:[{o:-26,w:11},{o:18,w:6.5,short:true}]},
       {t:'guard',z0:1360,z1:1900,road:0},
@@ -5929,8 +5992,8 @@ const RCOURSES={
       {t:'pipe',z0:2760,z1:3150},
       {t:'line',z:2800,at:0,n:12,amp:0},
       {t:'sign',z:3210,at:0,text:'🚀 메가 우주 점프'},
-      {t:'kick',z:3250,at:0,kind:'mega',w:26},{t:'gap',z0:3276,z1:3322,a:-40,b:40},
-      {t:'box',z:3390},
+      {t:'kick',z:3250,at:6,kind:'mega',w:10,H:3.8},{t:'gap',z0:3276,z1:3322,a:-40,b:40,land:{at:-6,w:5,L:80}},
+      {t:'box',z:3425},
       {t:'sign',z:3430,at:-14,text:'⚠ 난간 없는 외길'},
       {t:'narrow',z0:3470,z1:3800,hw:8},
       {t:'pad',z:3540,at:0},{t:'pad',z:3660,at:0},{t:'line',z:3600,at:0,n:8,amp:2},
@@ -5946,8 +6009,10 @@ for(const id in RCOURSES)RCOURSES[id].len=RSH.COURSE_META[id].len;   // 길이�
 // =====================================================================
 const RTUNE={
   charRace:{usagi:{maxV:1.02},chiikawa:{maxV:.985,accel:1.2,crashT:1.1}},   // 레이스 보정: 치이카와 = 최고속도는 낮지만 가속·회복이 빠른 가벼운 캐릭터
-  airTurn:.85,   // 레이스 공중 조향 속도(rad/s)
-  bankK:125,bankPull:.3,wallPull:1.15,rollK:.8,
+  iceSlip:1.3,springVy:8.5,   // 빙판 미끄러짐(작을수록 더 미끄러움) · 스프링 발판 위로 튀는 속도
+  airTurn:.85,voidFall:.55,   // 길 옆 허공에 이만큼 떠 있으면 추락
+   // 레이스 공중 조향 속도(rad/s)
+  bankK:125,bankPull:.3,wallPull:1.15,rollK:.8,pipeAirMax:8.5,
   carStat:.6,          // 레이스에서는 캐릭터 능력 차이를 60%만 반영 (패시브는 그대로)
   startV:8,            // GO 순간 출발 속도(m/s)
   startWin:.45,        // GO 직전 이 시간(초) 안에 점프를 누르면 스타트 부스트
@@ -5962,22 +6027,24 @@ const RCOL=['#ff7a2f','#3a8bd0','#4fb487','#c06bd8'];
 const rRamp=(z,a,b,c,d)=>z<=a||z>=d?0:z<b?smooth(a,b,z):z>c?1-smooth(c,d,z):1;
 
 // ---------------- 코스 불러오기 (지형·도로 배열·안전 구역 미리 계산 → 런타임 할당 최소화) ----------------
-function loadCourse(id){const C=RCOURSES[id]||RCOURSES.carrot,R={C,id:C.id,len:C.len,hw:C.hw,F:C.F,splits:[],hidden:[],ice:[],pads:[],winds:[],narrows:[],signs:[],forks:[],gaps:[],cliffs:[],ledges:[],caves:[],treeSeg:new Map(),segSurf:new Map(),kickList:[],railList:[],clearZ:[]};
+function loadCourse(id){const C=RCOURSES[id]||RCOURSES.carrot,R={C,id:C.id,len:C.len,hw:C.hw,F:C.F,splits:[],hidden:[],ice:[],pads:[],winds:[],narrows:[],signs:[],forks:[],gaps:[],cliffs:[],ledges:[],caves:[],cwalls:[],rings:[],bridges:[],treeSeg:new Map(),segSurf:new Map(),kickList:[],railList:[],clearZ:[]};
   for(const f of C.F){if(f.t==='split'){f.idx=R.splits.length;R.splits.push(f)}else if(f.t==='hidden'){f.idx=R.hidden.length;R.hidden.push(f)}else if(f.t==='ice')R.ice.push(f);else if(f.t==='wind')R.winds.push(f);else if(f.t==='narrow')R.narrows.push(f);else if(f.t==='sign')R.signs.push(f);
-    else if(f.t==='fork'){f.idx=R.forks.length;R.forks.push(f)}else if(f.t==='gap')R.gaps.push(f);else if(f.t==='cliff')R.cliffs.push(f);else if(f.t==='ledge'){f.idx=R.ledges.length;R.ledges.push(f)}else if(f.t==='cave')R.caves.push(f)}
+    else if(f.t==='fork'){f.idx=R.forks.length;R.forks.push(f)}else if(f.t==='gap'){R.gaps.push(f);if(f.land){const L=f.land,e={z0:f.z1,z1:f.z1+L.L,road:f.road,ext:f};const ea=L.ea??f.a,eb=L.eb??f.b;if(L.at-L.w>ea)R.gaps.push(Object.assign({a:ea,b:L.at-L.w},e));if(L.at+L.w<eb)R.gaps.push(Object.assign({a:L.at+L.w,b:eb},e))}}else if(f.t==='cliff')R.cliffs.push(f);else if(f.t==='ledge'){f.idx=R.ledges.length;R.ledges.push(f)}else if(f.t==='cave')R.caves.push(f);else if(f.t==='cwall')R.cwalls.push(f);else if(f.t==='ring')R.rings.push(f)}
+  R.bridges=R.ledges.filter(l=>l.bridge);
   const N=Math.ceil((C.len+1200)/SEG);R.hwA=new Float32Array(N+1);R.roadsA=new Array(N+1);
   for(let i=0;i<=N;i++){const z=i*SEG;let w=C.hw;for(const sp of R.splits)w+=sp.widen*rRamp(z,sp.z0-50,sp.z0,sp.z1,sp.z1+50);
-    for(const n of R.narrows)w=Math.min(w,lerp(C.hw,n.hw,rRamp(z,n.z0-40,n.z0,n.z1,n.z1+40)));R.hwA[i]=w;
+    for(const n of R.narrows)w=Math.min(w,lerp(w,n.hw,rRamp(z,n.z0-40,n.z0,n.z1,n.z1+40)));   /* 좁은 구간이 다른 곳의 넓힘(split)을 지우던 문제 */R.hwA[i]=w;
     let F=null;for(let k=0;k<R.forks.length;k++)if(z>=R.forks[k].z0&&z<=R.forks[k].z1){F=R.forks[k];break}
     if(!F)R.roadsA[i]=[{o:0,w}];
-    else{const sh=rRamp(z,F.z0,F.z0+F.ramp,F.z1-F.ramp,F.z1);R.roadsA[i]=F.roads.map(r=>({o:r.o*sh,w:lerp(w,r.w,sh)}))}}
+    else{const sh=rRamp(z,F.z0,F.z0+F.ramp,F.z1-F.ramp,F.z1);R.roadsA[i]=F.roads.map(r=>({o:(r.o1!=null?lerp(r.o,r.o1,smoother((z-F.z0-F.ramp)/(F.z1-F.z0-2*F.ramp))):r.o)*sh,w:lerp(w,r.w,sh)}))   /* o1: 두 길이 자리를 바꾸며 교차 */}}
   raceBuildProf(R,C,N);RACE.R=R;
   // 레일·킥커·고지대·동굴 주변 나무 차단 영역(clearZ) 미리 등록 → 어떤 경우에도 나무에 박지 않음!
   for(const f of C.F){
     if(f.t==='pad'){f.x0=featAt(f,f.z);R.pads.push(f);R.clearZ.push({z0:f.z-6,z1:f.z+12,road:f.road,hid:f.hid,at:f.at||0,r:4.5})}
     else if(f.t==='rail'){R.clearZ.push({z0:f.z-RAIL.ramp-10,z1:f.z+f.L+18,road:f.road,hid:f.hid,at:f.at||0,r:5.2})}
-    else if(f.t==='kick'){const L=f.kind==='mega'?24:f.kind==='big'?20:f.kind==='nat'?14:12,W0=f.w||(f.kind==='mega'?18:f.kind==='big'?13:10);R.clearZ.push({z0:f.z-10,z1:f.z+L+22,road:f.road,hid:f.hid,at:f.at||0,r:W0/2+3})}
+    else if(f.t==='kick'){const L=f.kind==='mega'?24:f.kind==='big'?20:f.kind==='nat'?14:f.kind==='spring'?5:12,W0=f.w||(f.kind==='mega'?18:f.kind==='big'?13:10);R.clearZ.push({z0:f.z-10,z1:f.z+L+22,road:f.road,hid:f.hid,at:f.at||0,r:W0/2+3})}
     else if(f.t==='ledge'){R.clearZ.push({z0:f.z0-20,z1:f.z1+24,road:f.road,hid:f.hid,at:f.at||0,r:(f.w||5.5)+3.5})}
+    else if(f.t==='cwall'){R.clearZ.push({z0:f.z0-8,z1:f.z1+8,a:-18,b:18})}
     else if(f.t==='cave'){R.clearZ.push({z0:f.z0-14,z1:f.z1+14,road:f.road,all:f.a==null,a:f.a,b:f.b})}
     else if(f.t==='tree'){const i=Math.round(f.z/SEG);(R.treeSeg.get(i)||R.treeSeg.set(i,[]).get(i)).push({at:featAt(f,f.z),h:9+hash(i,3)*4})}}
   const addSurf=(z0,z1,o)=>{for(let i=Math.floor(z0/SEG)-1;i<=Math.ceil(z1/SEG)+1;i++)(R.segSurf.get(i)||R.segSurf.set(i,[]).get(i)).push(o)};
@@ -5998,14 +6065,16 @@ function featAt(f,z){return f.hid?hidX(z):roadOff(f.road,z)+(f.at||0)}
 // 고지대 블록 벽: 위에 못 올라탄 채 블록 옆면·앞면으로 들어가면 밖으로 밀어냄 (뚫고 지나가던 문제)
 function raceLedgeWall(z,x,py,pz,px){const R=RACE.R;if(!R||!R.ledges.length)return null;const b=baseY(z),c=pisteCX(z);
   for(let i=0;i<R.ledges.length;i++){const lg=R.ledges[i];if(z<lg.z0||z>lg.z1)continue;const ro=c+roadOff(lg.road,z),lx=ro+(lg.at||0),hw=lg.w+.4;
-    if(Math.abs(x-lx)>hw||py>=b+lg.h-.58)continue;
+    const Hh=LH(lg,z);if(lg.bridge&&Hh>2.4)continue;   /* 다리 밑은 통과 */
+    if(Math.abs(x-lx)>hw||py>=b+Hh-.58)continue;
     const side=px!=null&&Math.abs(px-lx)>lg.w+.15,front=!side&&pz<lg.z0+.05,dir=side?Math.sign(px-lx)||1:(Math.sign(ro-lx)||-1);
     return {x:lx+dir*(hw+.05),front,dir,lg}}
   return null}
+function raceInGap(z){const G=RACE.R.gaps;for(let i=0;i<G.length;i++)if(z>=G[i].z0-2&&z<=G[i].z1+6)return true;return false}
 function raceLedgeAt(z,x,py){const R=RACE.R;if(!R||!R.ledges.length)return null;const b=baseY(z),c=pisteCX(z);
   for(let i=0;i<R.ledges.length;i++){const lg=R.ledges[i];if(z<lg.z0||z>lg.z1)continue;
     const lx=c+roadOff(lg.road,z)+(lg.at||0);
-    if(Math.abs(x-lx)<=lg.w&&py>=b+lg.h-.58)return lg}
+    if(Math.abs(x-lx)<=lg.w&&py>=b+LH(lg,z)-.58)return lg}
   return null}
 // 낭떠러지·협곡: 그 자리 아래가 비어 있으면 깊이(m), 아니면 0
 function raceDrop(z,x){const R=RACE.R;if(!R||(!R.gaps.length&&!R.cliffs.length))return 0;const d=x-pisteCX(z);
@@ -6060,7 +6129,7 @@ function raceReset(){const s=game,R=RACE.R,C=R.C;CH=raceChar(CH.id);
   s.kickers=[];s.rails=[];s.obstacles=[];s.items=[];s.boxes=[];s.got=0;s.cFrac=0;s.nextKick=1e9;s.nextObs=1e9;s.carr10=0;
   const X=(z,at)=>pisteCX(z)+at;
   for(const f of C.F){const at=f.z!=null?featAt(f,f.z):0;   // 동굴·고지대·갈림길처럼 z0~z1 만 있는 지형은 위치 계산 생략
-    if(f.t==='kick'){const x=X(f.z,at),k=f.kind;s.kickers.push(k==='big'?{z:f.z,x,w:13,L:20,H:3.2,big:true}:k==='mega'?{z:f.z,x,w:18,L:24,H:4.6,big:true,mega:true}:k==='shortcut'?{z:f.z,x,w:f.w||9,L:12,H:.72,shortcut:true}:k==='nat'?{z:f.z,x,w:12,L:14,H:1.45,natural:true}:{z:f.z,x,w:CFG.kickW,L:CFG.kickL,H:CFG.kickH});if(f.w&&k!=='shortcut')s.kickers[s.kickers.length-1].w=f.w}
+    if(f.t==='kick'){const x=X(f.z,at),k=f.kind;s.kickers.push(k==='big'?{z:f.z,x,w:13,L:20,H:3.2,big:true}:k==='mega'?{z:f.z,x,w:18,L:24,H:4.6,big:true,mega:true}:k==='shortcut'?{z:f.z,x,w:f.w||9,L:12,H:.72,shortcut:true}:k==='spring'?{z:f.z,x,w:f.w||4.5,L:5,H:.55,spring:true}:k==='nat'?{z:f.z,x,w:12,L:14,H:1.45,natural:true}:{z:f.z,x,w:CFG.kickW,L:CFG.kickL,H:CFG.kickH});if(f.w&&k!=='shortcut')s.kickers[s.kickers.length-1].w=f.w;if(f.H)s.kickers[s.kickers.length-1].H=f.H}
     else if(f.t==='rail')addRail(f.z,f.L,X(f.z,at),{follow:true,road:f.road,hid:f.hid,off:f.at||0});
     else if(f.t==='log')s.obstacles.push({type:'log',z:f.z,x0:X(f.z,f.a),x1:X(f.z,f.b)});
     else if(f.t==='line'){for(let k=0;k<f.n;k++){const z=f.z+k*8.5,a2=featAt(f,z);s.items.push({z,x:X(z,a2)+f.amp*Math.sin(k*.9),h:f.h||0,gold:!!f.gold&&k%Math.max(1,Math.floor(f.n/f.gold))===0})}}
@@ -6121,16 +6190,18 @@ function raceRespawn(){const s=game;let z=s.fallZ,x=raceSafeX(z,s.fallX);for(let
   s.z=z;s.x=x;s.py=groundY(z,x);s.air=false;s.v=Math.max(12,s.v*.42);s.vd=s.v;s.vy=-slopeAt(z,x)*s.v;s.heading=0;s.edge=0;s.edgeVel=0;s.hitTime=-1;s.invT=1.2;s.lastTreeSeg=Math.floor(z/SEG);s.flips=[];s.flip=0;s.flipTarget=0;s.airSpin=0;s.spinVel=0;s.grabbing=false;s.grab=0;s.grindR=null;s.fallT=0;s.airTricks=[];popup('다시 출발!','#d8f6ff')}
 // 충돌·수집 (physicsStep 안)
 function racePhysics(prevZ,hAbove,h){const s=game,R=RACE.R;if(s.air&&s.py<baseY(s.z)-2.2&&raceDrop(s.z,s.x)){raceFall();return true}
+  s.voidT=(s.air&&!s.pipeAir&&raceDrop(s.z,s.x)>0&&!raceInGap(s.z))?(s.voidT||0)+h:0;if(s.voidT>RTUNE.voidFall){s.voidT=0;raceFall();return true}   /* 길 옆 허공에 갇히지 않게 */
   // 고지대 숏컷 올라탐 알림
-  const lg=raceLedgeAt(s.z,s.x,s.py);if(lg&&!s.air&&s.onLedge!==lg){s.onLedge=lg;popup('⭐ 고지대 숏컷 진입!','#ffe066');sfx('cp')}else if(!lg&&s.onLedge)s.onLedge=null;
+  const lg=raceLedgeAt(s.z,s.x,s.py);if(lg&&!s.air&&s.onLedge!==lg){s.onLedge=lg;popup(lg.bridge?'🌉 고가도로!':'⭐ 고지대 숏컷 진입!','#ffe066');sfx('cp')}else if(!lg&&s.onLedge)s.onLedge=null;
   if(!lg){const w=raceLedgeWall(s.z,s.x,s.py,prevZ,s._lpx);if(w){s.x=w.x;if(Math.sign(Math.sin(s.heading))===-w.dir){s.heading*=.2;s.edge*=.3}
     if(w.front){if(s.ball>0){}else{s.v=Math.max(10,s.v*.55);s.vd=s.v;raceSfx('bump');popup('쿵! 고지대 벽 — 램프 끝에서 점프해야 올라가요','#ffd6d6')}}else s.v*=.994}}
-  s._lpx=s.x;raceWallPhys(s,h);
+  s._lpx=s.x;raceWallPhys(s,h);bridgeRail(s,false);
   grindStep(prevZ,hAbove,h);
   for(const o of s.obstacles)if(o.type==='log'&&!o.done&&prevZ<o.z&&s.z>=o.z){o.done=true;if(s.x>o.x0-.25&&s.x<o.x1+.25){if(s.ball>0){popup('통나무 쾅!','#ffe066');continue}if(hAbove<FREE.logHit-.18){if(bump(s.x))return true;continue}popup('통나무 점프!','#d8f6ff')}}
   const pyRel=s.py-baseY(s.z);
   for(const it of s.items){if(it.got||it.z>s.z+1.2||it.z<prevZ-1.5)continue;const rad=(it.gold?1.85:1.6)*CH.magnet;if(prevZ<it.z+.05&&s.z>=it.z-.05&&Math.abs(it.x-s.x)<rad&&Math.abs(pyRel-it.h)<rad+(s.ball>0?1.5:0))raceCollect(it)}
   for(const b of s.boxes)if(prevZ<b.z&&s.z>=b.z&&hAbove<2.8)for(let k=0;k<b.xs.length;k++)if(!b.got[k]&&Math.abs(b.xs[k]-s.x)<RTUNE.boxR){b.got[k]=true;raceGetBox();break}
+  raceRingStep(s,prevZ,false);
   if(!s.air)for(const p of R.pads)if(!s.padDone.has(p)&&s.z>=p.z&&s.z<=p.z+7&&Math.abs(s.x-(pisteCX(p.z)+p.x0))<2.1&&Math.abs(pyRel-(p.h||0))<1.1){s.padDone.add(p);raceBoost('pad');popup('⚡ 가속!','#ffe066');buzz(15)}
   if(!s.air&&s.ball<=0)for(const P of RACE.puddles)if(P.owner!==RACE.myId&&!P.hitMe&&prevZ<P.z&&s.z>=P.z&&Math.abs(P.x-s.x)<RTUNE.puddleR){P.hitMe=true;raceHitMe('ice',P.owner)}
   return false}
@@ -6225,10 +6296,12 @@ function rivalInterp(r,now,dt){const g=r.g||(r.g=rivalState(r)),B=r.buf;g.time+=
 const BOT_NAMES=['찹쌀','두부','호떡','감자','마카롱','눈송이','군밤','단팥'];
 function botInit(b){const R=RACE.R;b.v=0;b.vy=0;b.py=baseY(b.z);b.air=false;b.airT=0;b.heading=0;b.spin=0;b.spinTgt=0;b.boostT=0;b.boostCap=0;b.capK=1;b.spinT=0;b.revT=0;b.slideT=0;b.wobT=0;b.shieldT=0;b.ballT=0;b.item=null;b.itemT=0;b.boxDone=new Set();b.padDone=new Set();b.grindR=null;b.hit=0;b.tx=b.x;b.txT=0;
   b.choice=R.splits.map(sp=>Math.floor(Math.random()*(sp.at.length+1)));b.fork=R.forks.map(F=>{const sc=F.roads.findIndex(r=>r.short);return sc>=0&&Math.random()<b.skill*.65?sc:Math.floor(Math.random()*F.roads.length)});b.ledgeTry=R.ledges.map(()=>Math.random()<b.skill*.55);b.fallT=0;b.hid=R.hidden.map(()=>Math.random()<b.skill*.45);b.pref=rand(-.45,.45);b.ph=Math.random()*6.28;b.avoid=Math.random()<.55;b.g=rivalState(b);b.g.yawBase=Math.random()<.5?0:180}
-function botGround(z,x,py){const b=baseY(z),R=RACE.R;const lg=raceLedgeAt(z,x,py);if(lg)return b+lg.h;const dp=raceDrop(z,x);if(dp)return b-dp;for(let i=0;i<R.kickList.length;i++){const k=R.kickList[i];if(k.z>z)break;if(z<=k.z+k.L&&Math.abs(x-k.x)<=k.w/2)return b+kH(k,(z-k.z)/k.L)}return b+raceSurfH(z,x)}
+function botGround(z,x,py){const b=baseY(z),R=RACE.R;const lg=raceLedgeAt(z,x,py);if(lg)return b+LH(lg,z);const dp=raceDrop(z,x);if(dp)return b-dp;for(let i=0;i<R.kickList.length;i++){const k=R.kickList[i];if(k.z>z)break;if(z<=k.z+k.L&&Math.abs(x-k.x)<=k.w/2)return b+kH(k,(z-k.z)/k.L)}return b+raceSurfH(z,x)}
 function botTargetX(b,z){const R=RACE.R,c=pisteCX(z),hw=raceHW(z);let t=b.pref*hw*.7+Math.sin(z*.012+b.ph)*3.5;
+  for(let i=0;i<R.gaps.length;i++){const G=R.gaps[i];if(G.land&&b.z>=G.z0-3&&b.z<=G.z1+G.land.L&&Math.abs(b.x-(c+roadOff(G.road,z)))<40)return c+roadOff(G.road,z)+G.land.at}
+  {const rx=botRingX(b,z);if(rx!=null)return rx}
   // 고지대 숏컷 진입 시도 중인 봇은 램프와 고지대 중심을 따름
-  for(let i=0;i<R.ledges.length;i++){const lg=R.ledges[i];if(b.ledgeTry[i]&&z>lg.z0-65&&z<lg.z1-8)return c+roadOff(lg.road,z)+(lg.at||0)}
+  for(let i=0;i<R.ledges.length;i++){const lg=R.ledges[i];if(!lg.bridge&&b.ledgeTry[i]&&z>lg.z0-65&&z<lg.z1-8){const sp=R.kickList.find(k=>k.spring&&k.z>lg.z0-60&&k.z<lg.z0);if(sp&&b.z<sp.z+sp.L)return sp.x;return c+roadOff(lg.road,z)+(lg.at||0)}}
   const F=forkAt(z);if(F){const ri=b.fork[F.idx],r=raceRoads(z)[ri];t=r.o+clamp(b.pref*r.w*.6+Math.sin(z*.012+b.ph)*2,-r.w+2.5,r.w-2.5);
     const k=R.kickList.find(k=>k.z>b.z-2&&k.z<b.z+90&&Math.abs(k.x-(c+r.o))<r.w);if(k&&R.gaps.some(G=>G.z0>k.z&&G.z0<k.z+k.L+40))t=k.x-c;
     let x=c+t;if(treeNear(z,x,1.8)){for(const o of [2.5,-2.5,5,-5])if(!treeNear(z,x+o,1.8)){x+=o;break}}return x}
@@ -6238,7 +6311,7 @@ function botTargetX(b,z){const R=RACE.R,c=pisteCX(z),hw=raceHW(z);let t=b.pref*h
   for(const P of RACE.puddles)if(b.avoid&&P.z>b.z&&P.z<b.z+30&&Math.abs(P.x-(c+t))<2.6)t+=(P.x>c+t?-3.2:3.2);
   if(!hiddenAt(z,t<0?-1:1)||Math.abs(t)<hw)t=clamp(t,-hw+2,hw-2);
   if(R.cliffs.some(Cf=>z>=Cf.z0-30&&z<=Cf.z1))t=clamp(t,-hw+3,hw-3);
-  for(const G of R.gaps)if(z>G.z0-70&&z<G.z1&&raceDrop(G.z0+1,c+t)){const k=R.kickList.find(k=>k.z<G.z0&&k.z>G.z0-60&&Math.abs(k.x-(c+t))<k.w/2+6);if(k)t=k.x-c;else{let best=t,bd=1e9;for(let o=-hw+2;o<=hw-2;o+=2)if(!raceDrop(G.z0+1,c+o)&&Math.abs(o-t)<bd){bd=Math.abs(o-t);best=o}t=best}}
+  for(const G of R.gaps)if(!G.ext&&z>G.z0-70&&z<G.z1&&raceDrop(G.z0+1,c+t)){let k=null,kd=1e9;for(const q of R.kickList)if(q.z<G.z0&&q.z>G.z0-60&&q.w>=6&&Math.abs(q.x-(c+t))<Math.max(q.w/2+6,G.land?30:0)&&Math.abs(q.x-(c+t))<kd){kd=Math.abs(q.x-(c+t));k=q}if(k)t=k.x-c;else{let best=t,bd=1e9;for(let o=-hw+2;o<=hw-2;o+=2)if(!raceDrop(G.z0+1,c+o)&&Math.abs(o-t)<bd){bd=Math.abs(o-t);best=o}t=best}}
   let x=c+t;if(treeNear(z,x,1.8)){for(const o of [2.5,-2.5,5,-5,8,-8])if(!treeNear(z,x+o,1.8)){x+=o;break}}
   return x}
 function botCap(b){const R=RACE.R,me=RACE.racers.get(RACE.myId),lead=RACE.order.length?RACE.order[0].z:b.z,gap=lead-b.z,rb=rubberOf(b,gap);b.rbA=rb.acc;
@@ -6248,7 +6321,8 @@ function botUpdate(b,dt){const R=RACE.R,g=b.g,prevZ=b.z;g.time+=dt;
   for(const k of ['boostT','spinT','revT','slideT','wobT','shieldT','ballT','hit','cloudT'])if(b[k]>0)b[k]=Math.max(0,b[k]-dt);
   if(RACE.phase==='count'){b.py=baseY(b.z);botSync(b,dt);return}
   if(b.fallT>0){b.fallT-=dt;b.vy-=CFG.g*dt;b.py+=b.vy*dt;if(b.fallT<=0){let z=b.z,x=raceSafeX(z,b.x);for(let k=1;x==null&&k<40;k++){z=b.z+k*4;x=raceSafeX(z,b.x)}b.z=z;b.x=x==null?pisteCX(z):x;b.py=botGround(b.z,b.x,baseY(b.z));b.air=false;b.v=Math.max(12,b.v*.42);b.vy=0;b.spin=0;b.spinTgt=0}botSync(b,dt);return}
-  if(b.air&&b.py<baseY(b.z)-2.2&&raceDrop(b.z,b.x)){b.fallT=1.5;b.boostT=0;b.ballT=0;botSync(b,dt);return}
+  b.voidT=(b.air&&raceDrop(b.z,b.x)>0&&!raceInGap(b.z))?(b.voidT||0)+dt:0;
+  if((b.air&&b.py<baseY(b.z)-2.2&&raceDrop(b.z,b.x))||b.voidT>RTUNE.voidFall){b.voidT=0;b.fallT=1.5;b.boostT=0;b.ballT=0;botSync(b,dt);return}
   const maxV=R.C.maxSpeed*(CHARS[b.char]?1+(CHARS[b.char].maxV-1)*RTUNE.carStat:1);
   if(b.fin){b.v=Math.max(0,b.v-8*dt)}
   else if(b.spinT>0){b.v*=Math.exp(-dt*1.4)}
@@ -6257,7 +6331,7 @@ function botUpdate(b,dt){const R=RACE.R,g=b.g,prevZ=b.z;g.time+=dt;
   // 조향 타겟은 0.08초마다 갱신 (프레임당 봇 3명×treeNear 중복 제거)
   if(!b.grindR){b.txT-=dt;if(b.txT<=0){b.txT=.08;b.tx=botTargetX(b,b.z+Math.max(14,b.v*.55))}
     const wob=(b.revT>0?Math.sin(g.time*5+b.ph)*4:0)+(b.slideT>0?Math.sin(g.time*9)*3:0);
-    const vm=Math.max(9,b.v*.45),vx=clamp((b.tx+wob-b.x)*1.6,-vm,vm)*(b.air?.3:1)*(b.slideT>0?.2:1);b.x+=vx*dt;botWallPhys(b);b.heading=lerp(b.heading,Math.atan2(vx,Math.max(5,b.v)),1-Math.exp(-dt*6))}
+    const vm=Math.max(9,b.v*.45),vx=clamp((b.tx+wob-b.x)*1.6,-vm,vm)*(b.air?.3:1)*(b.slideT>0?.2:1);b.vxS=(!b.air&&surfAt(b.z,b.x)===1)?lerp(b.vxS||0,vx,1-Math.exp(-dt*RTUNE.iceSlip*1.4)):vx;b.x+=b.vxS*dt;botWallPhys(b);bridgeRail(b,true);b.heading=lerp(b.heading,Math.atan2(vx,Math.max(5,b.v)),1-Math.exp(-dt*6))}
   {const w=raceLedgeWall(b.z,b.x,b.py,prevZ,b._lpx);if(w){b.x=w.x;if(w.front)b.v=Math.max(10,b.v*.6)}b._lpx=b.x}   // 고지대 벽
   // 곡선 레일 탑승
   if(!b.air){const r=R.railList.find(r=>b.z>r.z0&&b.z<r.z1&&Math.abs(b.x-railX(r,b.z))<1.8);if(r){if(b.grindR!==r){b.grindR=r}b.x=lerp(b.x,railX(r,b.z),1-Math.exp(-dt*14));b.heading*=.9;b.v=Math.min(b.v+4.2*dt,R.C.maxSpeed*1.08)}else if(b.grindR){const r0=b.grindR;b.grindR=null;if(b.z>=r0.z1-.6)botBoost(b,'grind')}}
@@ -6267,13 +6341,14 @@ function botUpdate(b,dt){const R=RACE.R,g=b.g,prevZ=b.z;g.time+=dt;
     if(b.py<=gy){b.air=false;b.py=gy;const clean=Math.abs(b.spin-b.spinTgt)<20;g.yawBase+=b.spin;b.spin=0;if(clean&&(b.spinTgt||b.airT>1))botBoost(b,'trick',clamp(.3+Math.abs(b.spinTgt)/1080,.3,1));b.spinTgt=0;g.landT=.28}}
   else{const vyG=(gy-b.py)/dt;if(vyG<b.vy-CFG.g*dt*2.3&&b.v>8&&!b.grindR){b.air=true;b.airT=0;
       const kPrev=R.kickList.find(k=>prevZ>=k.z&&prevZ<=k.z+k.L&&Math.abs(b.x-k.x)<=k.w/2);
-      const scPop=kPrev&&kPrev.shortcut&&(Math.random()<b.skill*.8)?4.0:(Math.random()<.6?2.2:0);
+      const scPop=kPrev&&kPrev.spring?RTUNE.springVy:kPrev&&kPrev.shortcut&&(Math.random()<b.skill*.8)?4.0:(Math.random()<.6?2.2:0);
       b.vy=b.vy+scPop;const est=2*Math.max(0,b.vy+baseSlope(b.z)*b.v)/CFG.g;b.spinTgt=est>.75&&Math.random()<b.skill?(est>1.4&&Math.random()<.5?540:360)*(Math.random()<.5?-1:1):0;if(Math.abs(b.spinTgt)===540)b.spinTgt=Math.sign(b.spinTgt)*360}
     else{b.vy=vyG;b.py=gy;
       const lg=R.logList.find(o=>o.z>b.z&&o.z-b.z<Math.max(4,b.v*.18)&&b.x>o.x0-1&&b.x<o.x1+1);if(lg&&b.v>5){b.air=true;b.airT=0;b.vy=-baseSlope(b.z)*b.v+4.2;b.spinTgt=0}}}
   if(!b.air&&!(b.hit>0)&&!(b.ballT>0)&&!b.fin){const seg=Math.floor(b.z/SEG);if(seg!==b._seg){b._seg=seg;for(const t of treesAt(seg))if(Math.abs(t.x-b.x)<t.hb+.2){b.spinT=1.2;b.hit=2;b.v*=.6;break}}}
   for(const bx of game.boxes||[])if(prevZ<bx.z&&b.z>=bx.z&&!b.boxDone.has(bx)){b.boxDone.add(bx);if(!b.item&&!b.itemT&&bx.xs.some(x=>Math.abs(x-b.x)<RTUNE.boxR+.6)){b.itemT=RTUNE.roulette;b.itemPend=RSH.pickItem(RACE.order.indexOf(b)+1,RACE.racers.size,b.z,R.len);b.useAt=null}}
   const bpyRel=b.py-baseY(b.z);
+  raceRingStep(b,prevZ,true);
   for(const p of R.pads)if(!b.padDone.has(p)&&!b.air&&b.z>=p.z&&b.z<=p.z+7&&Math.abs(b.x-(pisteCX(p.z)+p.x0))<2.1&&Math.abs(bpyRel-(p.h||0))<1.1){b.padDone.add(p);botBoost(b,'pad')}
   if(!b.air)for(const P of RACE.puddles)if(P.owner!==b.id&&prevZ<P.z&&b.z>=P.z&&Math.abs(P.x-b.x)<RTUNE.puddleR)botHit(b,'ice',P.owner);
   for(const o of RACE.racers.values())if(o.bot&&o!==b&&o.ballT>0&&Math.abs(o.z-b.z)<1.8&&Math.abs(o.x-b.x)<RTUNE.ballR&&!(b._bh>0)){b._bh=1.5;botHit(b,'ball',o.id)}if(b._bh>0)b._bh-=dt;
@@ -6532,7 +6607,7 @@ function raceBuildProf(R,C,N){PCXT=null;R.prof=null;R.guards=[];
   if(!curves.length&&!pipes.length)return;
   const off=new Float32Array(N+1),bank=new Float32Array(N+1),pipe=new Float32Array(N+1);
   for(let i=0;i<=N;i++){const z=i*SEG;let o=0;for(const c of curves)o+=c[2]*smoother((z-c[0])/(c[1]-c[0]));off[i]=o}
-  for(let i=1;i<N;i++){const k=(off[i+1]-2*off[i]+off[i-1])/(SEG*SEG);bank[i]=clamp(-k*RTUNE.bankK,-.5,.5)}   // 바깥쪽이 올라가게
+  for(let i=1;i<N;i++){const k=(off[i+1]-2*off[i]+off[i-1])/(SEG*SEG);bank[i]=C.noBank?0:clamp(-k*RTUNE.bankK,-.5,.5)}   // 바깥쪽이 올라가게
   const b0=bank.slice();for(let i=3;i<N-3;i++){let a=0;for(let d=-3;d<=3;d++)a+=b0[i+d];bank[i]=a/7}
   for(let i=0;i<=N;i++){const z=i*SEG;let p=0;for(const f of pipes)p=Math.max(p,rRamp(z,f.z0,f.z0+PIPE.ramp,f.z1-PIPE.ramp,f.z1));pipe[i]=p}
   if(curves.length)PCXT=off;R.prof={bank,pipe}}
@@ -6547,9 +6622,14 @@ function raceGuardAt(z){const G=RACE.R&&RACE.R.guards;if(!G)return null;for(let 
 // 벽·뱅크: 중력이 낮은 쪽으로 끌어내림 + 가드레일
 function raceWallPhys(s,h){const R=RACE.R;if(!R.prof&&!R.guards.length)return;
   if(R.prof&&!s.air){const an=raceSurfAng(s.z,s.x);if(an>.06||an<-.06){const pr=raceProfAt(s.z),k=pr&&pr.pk>.2?RTUNE.wallPull:RTUNE.bankPull;s.heading-=Math.sin(an)*k*h}}
-  const g=raceGuardAt(s.z);if(!g)return;const r=guardRoad(g,s.z,s.x);if(!r)return;const c=pisteCX(s.z)+r.o,lim=r.w-.35,u=s.x-c;
-  if(u>lim||u<-lim){s.x=c+Math.sign(u)*lim;if(Math.sin(s.heading)*u>0){s.heading*=.35;s.v*=.988;
-    if(!s._grdT||s.time-s._grdT>.45){s._grdT=s.time;raceSfx('bump');if(s.scr)for(let i=0;i<10;i++)s.sparks.push({x:s.scr.x+Math.sign(u)*40*s.scr.s,y:s.scr.y-20*s.scr.s,vx:rand(-120,120)-Math.sign(u)*80,vy:rand(-160,-40),life:rand(.25,.45),col:i&1?'#ff8ae0':'#8ef4ff',star:true,sz:rand(4,7)})}}}}
+  const g=raceGuardAt(s.z);if(!g){s.pipeAir=0;return}const r=guardRoad(g,s.z,s.x);if(!r)return;const c=pisteCX(s.z)+r.o,pk=g.pipe?(raceProfAt(s.z)||{pk:0}).pk:0,lim=pk>.5?r.w-.05:r.w-.35,u=s.x-c;
+  // 하프파이프 에어: 벽 꼭대기까지 올라가면 위로 튀어 오름 → 공중에선 벽 꼭대기에 붙어 있다가 다시 벽으로 착지
+  if(s.pipeAir){if(s.air){s.x=c+s.pipeAir*lim;return}s.heading=-s.pipeAir*.32;s.pipeAir=0}
+  if(pk>.5&&!s.air&&(u>lim-.02||u<-lim+.02)){const vl=s.v*Math.sin(s.heading)*Math.sign(u);if(vl>5){s.x=c+Math.sign(u)*lim;s.pipeAir=Math.sign(u);s.heading=0;takeOff(Math.min(RTUNE.pipeAirMax,vl*.5),null,'pipe');popup('⤴ 하프파이프 에어!','#ffd6f6');return}}
+  if(u>lim||u<-lim){s.x=c+Math.sign(u)*lim;const ry=Math.atan((pisteCX(s.z+6)+r.o-(pisteCX(s.z-2)+r.o))/8),rel=s.heading-ry;
+    if(Math.sin(rel)*u>0){   // 난간 쪽으로 향하던 만큼만: 진행 방향을 길(난간) 방향으로 정렬, 속도는 부딪힌 각도에 비례해 한 번만 감소
+      const hit=Math.abs(rel)>.07;s.heading=ry+rel*.25;if(hit&&(!s._grdT||s.time-s._grdT>.3))s.v*=1-Math.min(.12,Math.abs(rel)*.35);
+    if(hit&&(!s._grdT||s.time-s._grdT>.45)){s._grdT=s.time;raceSfx('bump');if(s.scr)for(let i=0;i<10;i++)s.sparks.push({x:s.scr.x+Math.sign(u)*40*s.scr.s,y:s.scr.y-20*s.scr.s,vx:rand(-120,120)-Math.sign(u)*80,vy:rand(-160,-40),life:rand(.25,.45),col:i&1?'#ff8ae0':'#8ef4ff',star:true,sz:rand(4,7)})}}}}
 function guardRoad(g,z,x){const rr=raceRoads(z);if(rr.length<2)return rr[0];if(g.road==null)return null;const c=pisteCX(z);let bi=0,bd=1e9;for(let i=0;i<rr.length;i++){const d=Math.abs(x-c-rr[i].o);if(d<bd){bd=d;bi=i}}return bi===Math.min(g.road,rr.length-1)?rr[bi]:null}
 function botWallPhys(b){const g=raceGuardAt(b.z);if(!g)return;const r=guardRoad(g,b.z,b.x);if(!r)return;const c=pisteCX(b.z)+r.o,lim=r.w-.5;if(b.x>c+lim)b.x=c+lim;else if(b.x<c-lim)b.x=c-lim}
 
@@ -6558,14 +6638,17 @@ const RB_COL=(()=>{const o=[];for(let i=0;i<24;i++){const h=i/24*300/60,c=.9*(1-
   if(h<1){r=c;g=x}else if(h<2){r=x;g=c}else if(h<3){g=c;b=x}else if(h<4){g=x;b=c}else{r=x;b=c}o.push([Math.round((r+m)*255),Math.round((g+m)*255),Math.round((b+m)*255)])}return o})();
 const RB_PA=[],RB_PB=[];
 function raceDrawRainbow(a,b,fog,A,B,jd){const R=RACE.R,za=a.z,zb=b.z;
-  for(let i=0;i<R.gaps.length;i++){const G=R.gaps[i];if(za>=G.z0-.3&&zb<=G.z1+.3)return}   // 우주 점프 구간엔 도로 없음
+  const CUT=[];for(let i=0;i<R.gaps.length;i++){const G=R.gaps[i];if(za>=G.z0-.3&&zb<=G.z1+.3){if(G.a<=-30&&G.b>=30)return;const o=roadOff(G.road,za);CUT.push([o+G.a,o+G.b])}}   // 우주 점프 구간엔 도로 없음 / 착지대 옆은 잘라냄
   const p0=raceProfAt(za),pa=p0?{bk:p0.bk,pk:p0.pk}:null,p1=raceProfAt(zb),pb=p1?{bk:p1.bk,pk:p1.pk}:null;
   const ca=pisteCX(za),cb=pisteCX(zb),ya=baseY(za),yb=baseY(zb),t=game.time,shim=(Math.floor(za/6)&1)?1.07:1,wave=Math.max(0,Math.sin(za*.045-t*5)),lit=shim+Math.round(wave*wave*6)*.03;
-  const gd0=raceGuardAt(za),fa=1-fog;
-  for(let q=0;q<A.length;q++){const ra=A[q],rb=B[Math.min(q,B.length-1)],gd=gd0&&(A.length<2||gd0.road==null||gd0.road===q);
+  const gd0=raceGuardAt(za),fa=1-fog,fr=(za-cam.z)/VIEW_DIST,ga=1-smooth(.62,.97,fr);if(ga<=.01)return;ctx.globalAlpha=ga;   // 먼 도로는 서서히 나타남
+  // 겹치는 길(갈림길 시작·끝)은 하나로 합쳐서 그림 → 가운데에 가장자리 선·두께 띠가 겹치지 않게
+  const SA=rbCut(rbSpans(A),CUT),SB=rbCut(rbSpans(B),CUT),PR=rbPairs(SA,SB);if(!SA.length||!SB.length){ctx.globalAlpha=1;return}
+  for(let q=0;q<PR.length;q++){const [sa,sb]=PR[q],ra={o:(sa[0]+sa[1])/2,w:(sa[1]-sa[0])/2},rb={o:(sb[0]+sb[1])/2,w:(sb[1]-sb[0])/2},ri=sa[2]!=null?sa[2]:-1,
+      gd=gd0&&(A.length<2||(gd0.road==null?true:gd0.road===ri));
     const N=(pa||pb)?(jd<70?16:jd<140?8:4):(jd<70?8:jd<140?6:3);
     for(let i=0;i<=N;i++){const f=i/N,ua=-ra.w+2*ra.w*f,ub=-rb.w+2*rb.w*f;
-      RB_PA[i]=proj(ca+ra.o+ua,ya+(pa?profH(pa,ua,ra.w):0),za);RB_PB[i]=proj(cb+rb.o+ub,yb+(pb?profH(pb,ub,rb.w):0),zb);if(!RB_PA[i]||!RB_PB[i])return}
+      RB_PA[i]=proj(ca+ra.o+ua,ya+(pa&&A.length<2?profH(pa,ua,ra.w):0),za);RB_PB[i]=proj(cb+rb.o+ub,yb+(pb&&B.length<2?profH(pb,ub,rb.w):0),zb);if(!RB_PA[i]||!RB_PB[i]){ctx.globalAlpha=1;return}}
     // 리본 두께(아래로 살짝) — 떠 있는 도로 느낌
     const th=(P,s)=>Math.max(2,1.1*s);ctx.fillStyle=mixC([60,34,120],C_FOG,fog*.7);
     for(const e of [0,N]){const A0=RB_PA[e],B0=RB_PB[e];ctx.beginPath();ctx.moveTo(A0.x,A0.y);ctx.lineTo(B0.x,B0.y);ctx.lineTo(B0.x,B0.y+th(B0,B0.s));ctx.lineTo(A0.x,A0.y+th(A0,A0.s));ctx.closePath();ctx.fill()}
@@ -6580,7 +6663,13 @@ function raceDrawRainbow(a,b,fog,A,B,jd){const R=RACE.R,za=a.z,zb=b.z;
             ctx.strokeStyle=(Math.floor(za/8)&1)?'rgba(255,138,224,'+fa.toFixed(3)+')':'rgba(142,244,255,'+fa.toFixed(3)+')';ctx.lineWidth=Math.max(1.4,TA.s*.16);ctx.beginPath();ctx.moveTo(TA.x,TA.y);ctx.lineTo(TB.x,TB.y);ctx.stroke()}}
         ctx.strokeStyle='rgba(255,255,255,'+(.9*fa).toFixed(3)+')';ctx.lineWidth=Math.max(1.2,A0.s*.16);ctx.beginPath();ctx.moveTo(A0.x,A0.y);ctx.lineTo(B0.x,B0.y);ctx.stroke()}
       ctx.lineCap='butt'}}
-  raceSurfSeg(a,b,fog)}
+  ctx.globalAlpha=1;raceSurfSeg(a,b,fog)}
+function rbCut(S,C){if(!C.length)return S;let out=S;for(const [a,b] of C){const n=[];for(const v of out){if(b<=v[0]||a>=v[1]){n.push(v);continue}if(a>v[0])n.push([v[0],a,v[2]]);if(b<v[1])n.push([b,v[1],v[2]])}out=n}return out.filter(v=>v[1]-v[0]>.5)}
+function rbSpans(R0){const S=R0.map((r,i)=>[r.o-r.w,r.o+r.w,i]).sort((p,q)=>p[0]-q[0]),out=[];for(const v of S){const L=out[out.length-1];if(L&&v[0]<=L[1]+.3){L[1]=Math.max(L[1],v[1]);L[2]=null}else out.push(v.slice())}return out}
+function rbPairs(SA,SB){if(SA.length===SB.length)return SA.map((v,i)=>[v,SB[i]]);
+  // 갈라지는/합쳐지는 순간: 한 줄짜리 쪽을 빈틈 위치에서 나눠 짝지음
+  const one=SA.length<SB.length?SA:SB,two=one===SA?SB:SA,o=one[0],out=[];
+  for(let k=0;k<two.length;k++){const l=k?(two[k-1][1]+two[k][0])/2:o[0],r=k<two.length-1?(two[k][1]+two[k+1][0])/2:o[1],piece=[Math.max(o[0],l),Math.min(o[1],r),null];out.push(one===SA?[piece,two[k]]:[two[k],piece])}return out}
 
 // ---- 우주 배경 (지평선 아래까지 별·성운, 큰 고리 행성)
 const SPACE={c:null,S:0};
@@ -6598,6 +6687,111 @@ function drawSpaceBg(hy,shift){const S=bgScale();if(!SPACE.c||Math.abs(SPACE.S-S
   const c=SPACE.c,cw=c.width/S,ch=c.height/S,ox=-((((shift*.3)%cw)+cw)%cw);for(let x=ox-cw;x<W+cw;x+=cw)ctx.drawImage(c,x,hy-ch*.22,cw,ch);
   drawRingPlanet(W*.2-shift*.12,hy+H*.34,Math.min(W,H)*.13);
   const t=game.time;for(let i=0;i<7;i++){const x=((i*263+40-shift*.3)%(W+80)+W+80)%(W+80)-40,y=hy+((i*131)%Math.max(60,H-hy)),k=.5+.5*Math.sin(t*2.3+i*1.7);drawSparkle(ctx,x,y,3+k*4,i&1?'#ffd6f6':'#d4f6ff',.5+.5*k)}}
+
+// =====================================================================
+//  🏁 그랑프리 캐년 전용: 고가 교차로(다리) · 협곡 암벽 · 대시 링 · 코너 방호벽
+//   - 다리 = bridge:true 고지대: 높이가 양 끝에서 0 → h 로 부드럽게 오르내림(경사로)
+//     갈림길 두 길이 서로 자리를 바꾸며 교차하고, 한 길은 다리로 위를 지나감 (아랫길은 다리 밑을 통과)
+//   - 다리 위는 난간이 있어 떨어지지 않음 · 다리 밑 지면은 도로를 그리지 않음
+//   - 대시 링: 공중/다리 위에 뜬 링을 통과하면 가속
+// =====================================================================
+const RING={r:2.3};
+// 고지대/다리 높이 (다리는 양 끝 경사로)
+function LH(lg,z){if(!lg.bridge)return lg.h;const c=lg.climb||80;return lg.h*smoother((z-lg.z0)/c)*smoother((lg.z1-z)/c)}
+function bridgeH(ri,z){const B=RACE.R&&RACE.R.bridges;if(!B||!B.length)return 0;for(let i=0;i<B.length;i++){const lg=B[i];if(lg.road===ri&&z>=lg.z0&&z<=lg.z1)return LH(lg,z)}return 0}
+// 다리 난간: 다리 갑판 높이에 있으면 다리 밖으로 못 나감 (부딪힌 각도만큼만 감속)
+function bridgeRail(o,isBot){const B=RACE.R.bridges;if(!B||!B.length)return;
+  for(let i=0;i<B.length;i++){const lg=B[i];if(o.z<lg.z0||o.z>lg.z1)continue;const H=LH(lg,o.z);if(H<.9)continue;const b=baseY(o.z);if(o.py<b+H-.75||o.py>b+H+5)continue;
+    const ro=roadOff(lg.road,o.z),lx=pisteCX(o.z)+ro+(lg.at||0),lim=lg.w-.35,u=o.x-lx;if(Math.abs(u)>lg.w+2.5||(u<=lim&&u>=-lim))continue;
+    o.x=lx+Math.sign(u)*lim;if(isBot)continue;
+    const ry=Math.atan((pisteCX(o.z+6)+roadOff(lg.road,o.z+6)-(pisteCX(o.z-2)+roadOff(lg.road,o.z-2)))/8),rel=o.heading-ry;
+    if(Math.sin(rel)*u>0){const hit=Math.abs(rel)>.07;o.heading=ry+rel*.25;if(hit&&(!o._grdT||o.time-o._grdT>.35)){o.v*=1-Math.min(.1,Math.abs(rel)*.3);o._grdT=o.time;raceSfx('bump')}}}}
+// 대시 링 통과 판정 (플레이어/봇 공용)
+function raceRingStep(o,prevZ,isBot){const G=RACE.R.rings;if(!G||!G.length)return;
+  for(let i=0;i<G.length;i++){const g=G[i];if(!(prevZ<g.z&&o.z>=g.z))continue;const rx=pisteCX(g.z)+featAt(g,g.z),ry=baseY(g.z)+g.h,k=isBot?1.35:1;
+    if(Math.abs(o.x-rx)<RING.r*k&&Math.abs(o.py+.8-ry)<RING.r*1.15*k){if(isBot)botBoost(o,'pad');else{raceBoost('pad',1.15);popup('💫 대시 링!','#ffe8a0');buzz(15);g.hitT=game.time}}}}
+// 봇: 바로 앞의 대시 링을 노림
+function botRingX(b,z){const G=RACE.R.rings;if(!G||!G.length)return null;for(let i=0;i<G.length;i++){const g=G[i];if(g.z>b.z+1&&g.z<b.z+34){const rx=pisteCX(g.z)+featAt(g,g.z);if(Math.abs(rx-b.x)<9)return rx}}return null}
+
+// ---------- 그리기 ----------
+const GP_COL={deck:'#d9d0d6',deck2:'#cfc5cc',side:'#b9b3b8',side2:'#8d8690',under:'#6f6672',pillar:'#c9c1c4',pillar2:'#968d94',railA:'#ff5a4e',railB:'#ffffff',rock:[196,118,86],rock2:[150,84,62],rockTop:[236,214,200]};
+function drawBridgePiece(sp,a){const lg=sp.lg,za=sp.za,zb=sp.zb,Ha=LH(lg,za),Hb=LH(lg,zb);if(Ha<.12&&Hb<.12)return;
+  const ba=baseY(za),bb=baseY(zb),xa=pisteCX(za)+roadOff(lg.road,za)+(lg.at||0),xb=pisteCX(zb)+roadOff(lg.road,zb)+(lg.at||0),w=lg.w,T=Math.min(1.1,Math.max(Ha,Hb));
+  const P=(x,y,z)=>proj(x,y,z);
+  const tlA=P(xa-w,ba+Ha,za),trA=P(xa+w,ba+Ha,za),tlB=P(xb-w,bb+Hb,zb),trB=P(xb+w,bb+Hb,zb);if(!tlA||!trA||!tlB||!trB)return;
+  const ulA=P(xa-w,ba+Ha-T,za),urA=P(xa+w,ba+Ha-T,za),ulB=P(xb-w,bb+Hb-T,zb),urB=P(xb+w,bb+Hb-T,zb);if(!ulA||!urA||!ulB||!urB)return;
+  ctx.globalAlpha=a;const quad=(A,B,C,D,f)=>{ctx.beginPath();ctx.moveTo(A.x,A.y);ctx.lineTo(B.x,B.y);ctx.lineTo(C.x,C.y);ctx.lineTo(D.x,D.y);ctx.closePath();ctx.fillStyle=f;ctx.fill()};
+  // 기둥: 다른 길과 겹치지 않는 곳에만 (교차 지점은 기둥 없는 아치 구간)
+  if(sp.pil!=null&&Hb>2.4){const z=sp.pil,H=LH(lg,z),b=baseY(z),x=pisteCX(z)+roadOff(lg.road,z)+(lg.at||0);
+    for(const sd of [-1,1]){const px=x+sd*(w-1.3),q0=P(px-.75,b,z),q1=P(px+.75,b,z),q2=P(px+.75,b+H-T,z),q3=P(px-.75,b+H-T,z);if(q0&&q1&&q2&&q3){quad(q0,q1,q2,q3,sd*(cam.x-px)>0?GP_COL.pillar2:GP_COL.pillar);ctx.strokeStyle='rgba(59,33,23,.35)';ctx.lineWidth=Math.max(1,q0.s*.05);ctx.stroke()}}}
+  const camAbove=cam.y>Math.min(ba+Ha,bb+Hb)-.05;
+  if(!camAbove)quad(ulA,urA,urB,ulB,GP_COL.under);   // 다리 밑에서 올려다본 바닥면
+  if(cam.x<xa-w)quad(tlA,tlB,ulB,ulA,GP_COL.side);if(cam.x>xa+w)quad(trA,trB,urB,urA,GP_COL.side2);
+  if(sp.front&&cam.z<za){quad(tlA,trA,urA,ulA,GP_COL.side2)}
+  if(camAbove){quad(tlA,trA,trB,tlB,(Math.floor(za/8)&1)?GP_COL.deck:GP_COL.deck2);
+    // 연석(빨강/흰색 줄무늬)
+    if((Math.floor(za/4)&1)===0){const m0=P(xa,ba+Ha,za),m1=P(xb,bb+Hb,zb);if(m0&&m1){ctx.strokeStyle='rgba(255,255,255,.85)';ctx.lineWidth=Math.max(1,m0.s*.18);ctx.beginPath();ctx.moveTo(m0.x,m0.y);ctx.lineTo(m1.x,m1.y);ctx.stroke()}}
+    const kb=Math.floor(za/4)&1,cw=.55;for(const sd of [-1,1]){const i0=P(xa+sd*(w-cw),ba+Ha,za),i1=P(xb+sd*(w-cw),bb+Hb,zb),o0=sd<0?tlA:trA,o1=sd<0?tlB:trB;if(i0&&i1)quad(o0,i0,i1,o1,kb?GP_COL.railA:GP_COL.railB)}}
+  // 난간 (기둥 + 위 레일)
+  if(camAbove&&(Ha>.9||Hb>.9)){ctx.lineCap='round';for(const sd of [-1,1]){const r0=P(xa+sd*w,ba+Ha+1.05,za),r1=P(xb+sd*w,bb+Hb+1.05,zb),f0=sd<0?tlA:trA;if(!r0||!r1)continue;
+      ctx.strokeStyle='rgba(70,60,70,.85)';ctx.lineWidth=clamp(f0.s*.07,1,6);ctx.beginPath();ctx.moveTo(f0.x,f0.y);ctx.lineTo(r0.x,r0.y);ctx.stroke();
+      ctx.strokeStyle=(Math.floor(za/4)&1)?GP_COL.railA:GP_COL.railB;ctx.lineWidth=clamp(f0.s*.11,1.3,9);ctx.beginPath();ctx.moveTo(r0.x,r0.y);ctx.lineTo(r1.x,r1.y);ctx.stroke()}ctx.lineCap='butt'}
+  ctx.globalAlpha=1}
+// 협곡 암벽: 길 양 끝에서 솟은 붉은 바위벽 + 위쪽 평평한 메사 윗면
+function drawCanyonWallPiece(sp,a){const cw=sp.cw,za=sp.za,zb=sp.zb,ba=baseY(za),bb=baseY(zb),ca=pisteCX(za),cb=pisteCX(zb),wa=raceHW(za)+.25,wb=raceHW(zb)+.25,H=cw.h||11;
+  const fog=clamp((za-cam.z-60)/(520/ENV.fogK),0,.8);ctx.globalAlpha=a;
+  for(const sd of [-1,1]){const x0=ca+sd*wa,x1=cb+sd*wb;if(sd*(cam.x-x0)>0)continue;   // 카메라가 벽 바깥이면 안쪽 면 안 그림
+    const g0=proj(x0,ba,za),g1=proj(x1,bb,zb),t0=proj(x0,ba+H,za),t1=proj(x1,bb+H,zb),o0=proj(x0+sd*9,ba+H,za),o1=proj(x1+sd*9,bb+H,zb);if(!g0||!g1||!t0||!t1)continue;
+    const lit=sd>0,c1=mixC(lit?GP_COL.rock:GP_COL.rock2,C_FOG,fog),c2=mixC(lit?GP_COL.rock2:[112,60,46],C_FOG,fog);
+    const gr=ctx.createLinearGradient(0,Math.min(t0.y,t1.y),0,Math.max(g0.y,g1.y));gr.addColorStop(0,c1);gr.addColorStop(1,c2);
+    ctx.beginPath();ctx.moveTo(g0.x,g0.y);ctx.lineTo(g1.x,g1.y);ctx.lineTo(t1.x,t1.y);ctx.lineTo(t0.x,t0.y);ctx.closePath();ctx.fillStyle=gr;ctx.fill();
+    // 지층 줄무늬
+    if(g0.s>.35){ctx.strokeStyle='rgba(90,44,30,'+(.35*(1-fog)).toFixed(3)+')';ctx.lineWidth=Math.max(1,g0.s*.08);ctx.beginPath();
+      for(const f of [.28,.55,.8]){const p0=proj(x0,ba+H*f+(sp.k&1?.4:0),za),p1=proj(x1,bb+H*f+(sp.k&1?0:.4),zb);if(p0&&p1){ctx.moveTo(p0.x,p0.y);ctx.lineTo(p1.x,p1.y)}}ctx.stroke()}
+    // 메사 윗면 (+눈 덮인 가장자리)
+    if(o0&&o1){ctx.beginPath();ctx.moveTo(t0.x,t0.y);ctx.lineTo(t1.x,t1.y);ctx.lineTo(o1.x,o1.y);ctx.lineTo(o0.x,o0.y);ctx.closePath();ctx.fillStyle=mixC(GP_COL.rockTop,C_FOG,fog);ctx.fill()}
+    ctx.strokeStyle='rgba(255,250,246,'+(.9*(1-fog)).toFixed(3)+')';ctx.lineWidth=Math.max(1.2,t0.s*.22);ctx.beginPath();ctx.moveTo(t0.x,t0.y);ctx.lineTo(t1.x,t1.y);ctx.stroke();
+    ctx.strokeStyle='rgba(59,33,23,'+(.4*(1-fog)).toFixed(3)+')';ctx.lineWidth=Math.max(1,g0.s*.06);ctx.beginPath();ctx.moveTo(g0.x,g0.y);ctx.lineTo(g1.x,g1.y);ctx.stroke()}
+  ctx.globalAlpha=1}
+// 코너 방호벽 (빨강/흰 타이어 배리어)
+function drawGuardPiece(sp,a){const za=sp.za,zb=sp.zb,rr=raceRoads(za);if(rr.length>1)return;const r=rr[0],ba=baseY(za),bb=baseY(zb),ca=pisteCX(za),cb=pisteCX(zb),rb=raceRoads(zb)[0];
+  ctx.globalAlpha=a;for(const sd of [-1,1]){const x0=ca+r.o+sd*(r.w+.15),x1=cb+rb.o+sd*(rb.w+.15),g0=proj(x0,ba,za),g1=proj(x1,bb,zb),t0=proj(x0,ba+.9,za),t1=proj(x1,bb+.9,zb);if(!g0||!g1||!t0||!t1)continue;
+    ctx.beginPath();ctx.moveTo(g0.x,g0.y);ctx.lineTo(g1.x,g1.y);ctx.lineTo(t1.x,t1.y);ctx.lineTo(t0.x,t0.y);ctx.closePath();ctx.fillStyle=(Math.floor(za/3)&1)?'#ff5a4e':'#fbf6f1';ctx.fill();
+    ctx.strokeStyle='rgba(59,33,23,.55)';ctx.lineWidth=Math.max(1,g0.s*.07);ctx.stroke()}
+  ctx.globalAlpha=1}
+// 대시 링 (빙글빙글 도는 금빛 링 + 화살표)
+function drawDashRing(g,a){const rx=pisteCX(g.z)+featAt(g,g.z),y=baseY(g.z)+g.h,p=proj(rx,y,g.z);if(!p||p.s<.25)return;
+  const r=RING.r*p.s,t=game.time,hit=g.hitT!=null&&t-g.hitT<.5,lw=Math.max(2,r*.2);ctx.globalAlpha=a;
+  ctx.strokeStyle='rgba(255,170,40,.35)';ctx.lineWidth=lw*2.2;ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.stroke();
+  ctx.strokeStyle=hit?'#ffffff':'#ffc93c';ctx.lineWidth=lw;ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.stroke();
+  ctx.strokeStyle='#fff6c8';ctx.lineWidth=Math.max(1,lw*.35);ctx.beginPath();ctx.arc(p.x,p.y,r*.86,0,Math.PI*2);ctx.stroke();
+  if(r>6){ctx.fillStyle='#fff';for(let k=0;k<8;k++){const an=t*2.4+k*Math.PI/4;ctx.beginPath();ctx.arc(p.x+Math.cos(an)*r,p.y+Math.sin(an)*r,lw*.32,0,Math.PI*2);ctx.fill()}
+    ctx.strokeStyle='rgba(255,201,60,.8)';ctx.lineWidth=Math.max(1.5,r*.09);ctx.lineCap='round';const ph=(t*1.6)%1;for(let k=0;k<2;k++){const yy=p.y+r*.35-((ph+k*.5)%1)*r*.7;ctx.beginPath();ctx.moveTo(p.x-r*.28,yy+r*.14);ctx.lineTo(p.x,yy-r*.08);ctx.lineTo(p.x+r*.28,yy+r*.14);ctx.stroke()}ctx.lineCap='butt'}
+  if(p.s>.6)GLOWS.push({x:p.x,y:p.y,r:r*1.6,a:a*.4,o:0});
+  ctx.globalAlpha=1}
+// 스프라이트 등록 (drawWorld 버킷)
+function gpBuckets(put,jOf){const R=RACE.R,zMax=cam.z+VIEW_DIST-4;
+  if(R.bridges)for(const lg of R.bridges){if(lg.z1<cam.z+.6||lg.z0>zMax)continue;const zs=Math.max(lg.z0,cam.z+.6),ze=Math.min(lg.z1,zMax);
+    for(let za=zs;za<ze;){const zb=Math.min(ze,(Math.floor(za/4+1e-6)+1)*4);let pil=null;const pz=Math.ceil(za/16)*16;if(pz>=za&&pz<zb){const rr=raceRoads(pz),me=roadOff(lg.road,pz);if(!rr.some((r,i)=>i!==lg.road&&Math.abs(r.o-me)<r.w+lg.w+1))pil=pz}
+      put(jOf(za),{race:1,kind:'bridge',lg,za,zb,z:zb,front:za===lg.z0,pil});za=zb}}
+  if(R.cwalls)for(const cw of R.cwalls){if(cw.z1<cam.z+.6||cw.z0>zMax)continue;const zs=Math.max(cw.z0,cam.z+.6),ze=Math.min(cw.z1,zMax);
+    for(let za=zs;za<ze;){const zb=Math.min(ze,(Math.floor(za/6+1e-6)+1)*6);put(jOf(za),{race:1,kind:'cwall',cw,za,zb,z:zb,k:Math.floor(za/6)});za=zb}}
+  if(R.C.grail)for(const gd of R.guards){if(gd.pipe||gd.noDraw||gd.z1<cam.z+.6||gd.z0>zMax)continue;const zs=Math.max(gd.z0,cam.z+.6),ze=Math.min(gd.z1,zMax);
+    for(let za=zs;za<ze;){const zb=Math.min(ze,(Math.floor(za/6+1e-6)+1)*6);put(jOf(za),{race:1,kind:'grail',za,zb,z:zb});za=zb}}
+  if(R.rings)for(const g of R.rings)if(g.z>cam.z+1&&g.z<zMax)put(jOf(g.z),{race:1,kind:'ring',g,z:g.z})}
+
+// ---------- 배경 (노을 협곡: 장밋빛 설산 + 붉은 메사 + 체크무늬 깃발) ----------
+function bakeGpBg(S){
+  const far=bakeRange({seed:501,per:2400,n:15,h:[70,120],w:[96,176],shape:'alpine',body:[226,170,164],snow:[255,242,236],shade:[184,120,122],rock:[156,96,98],inkA:.26,inkW:1.3},S);
+  const mid=bakeRange({seed:502,per:2000,n:12,h:[36,70],w:[120,220],shape:'mid',body:[214,132,100],snow:[255,226,206],shade:[166,92,74],rock:[140,74,60],trees:.25,inkA:.34,inkW:1.4},S);
+  const gm=mid.c.getContext('2d');gm.save();gm.scale(S,S);gm.lineJoin='round';
+  for(const [fx,fy] of [[420,mid.maxH-30],[1180,mid.maxH-36],[1700,mid.maxH-26]])for(const o of [-mid.per,0,mid.per]){const X=fx+o;if(X<-60||X>mid.per+60)continue;
+    gm.strokeStyle='#5a3c2c';gm.lineWidth=1.6;gm.beginPath();gm.moveTo(X,fy+16);gm.lineTo(X,fy-14);gm.stroke();
+    for(let i=0;i<4;i++)for(let j=0;j<3;j++){gm.fillStyle=(i+j)&1?'#2c2430':'#fffaf4';gm.fillRect(X+1+i*4,fy-14+j*4,4,4)}
+    gm.strokeStyle='rgba(44,36,48,.6)';gm.lineWidth=.8;gm.strokeRect(X+1,fy-14,16,12)}
+  gm.restore();
+  const val=bakeValley('scenic',533,S);
+  return{far,mid,val}}
 
 const RACE_THEMES={
   carrot:{
@@ -6618,6 +6812,12 @@ const RACE_THEMES={
     off1:[186,206,236],off2:[170,192,226],piste1:[242,248,255],piste2:[228,238,252],
     ridgeLit:[190,214,244],ridgeSh:[138,168,210],ridgeLitT:[216,236,252],ridgeShT:[162,190,228],
     ridgeTreeL:'#2a6b72',ridgeTreeS:'#1f505c',ridgeCapL:'#dffaf2',ridgeCapS:'#c2dff5',ridgeLine:'rgba(154,238,220,.38)'},
+  gp:{
+    flake:'ice',
+    env:{top:[96,112,196],mid:[244,166,132],hor:[255,214,168],sun:[255,196,124],sunA:1,sunLow:.72,sunX:700,fog:[246,212,194],fogK:1,tint:[255,200,172],tintA:.12,snow:.12,cloud:[255,216,196],valley:[214,172,154],star:.04,moon:0,lamp:.3},
+    off1:[248,236,230],off2:[240,226,220],piste1:[255,251,247],piste2:[249,242,238],
+    ridgeLit:[238,200,176],ridgeSh:[198,142,124],ridgeLitT:[250,222,204],ridgeShT:[216,166,144],
+    ridgeTreeL:'#4b8c6a',ridgeTreeS:'#36705a',ridgeCapL:'#fff6ee',ridgeCapS:'#f1d8cc',ridgeSharp:true,ridgeLine:'rgba(140,80,64,.4)'},
   rainbow:{
     flake:'star',space:true,
     env:{top:[6,4,26],mid:[26,14,66],hor:[92,54,160],sun:[255,220,255],sunA:0,sunLow:1,sunX:820,fog:[44,28,92],fogK:.95,tint:[170,130,255],tintA:.16,snow:.1,cloud:[110,80,180],valley:[44,28,92],star:1,moon:0,lamp:0},
@@ -6705,6 +6905,7 @@ const RACE_TREES=(()=>{
 
 // 코스별 전용 원경 파노라마 3레이어(far · mid · val) — 기기 해상도 기준 1회 베이킹!
 const RBG_C={S:0,m:new Map()};
+RACE_TREES.gp=RACE_TREES.aurora;   // 그랑프리: 눈 덮인 침엽수
 function bakeCarrotBg(S){
   const far=bakeRange({seed:101,per:2400,n:11,h:[56,96],w:[190,310],shape:'round',body:[172,222,162],snow:[220,244,192],shade:[138,198,142],inkA:.22,inkW:1.2},S);
   const mid=bakeRange({seed:102,per:2000,n:10,h:[30,58],w:[165,260],shape:'round',body:[154,214,132],snow:[198,238,154],shade:[120,186,112],inkA:.28,inkW:1.3},S);
@@ -6785,7 +6986,7 @@ function bakeAuroraBg(S){
   return{far,mid,val}}
 
 function getRaceBg(id){const S=bgScale();if(Math.abs(S-RBG_C.S)>.2){RBG_C.m.clear();RBG_C.S=S}
-  let T=RBG_C.m.get(id);if(!T){T=id==='carrot'?bakeCarrotBg(S):id==='ice'?bakeIceBg(S):bakeAuroraBg(S);RBG_C.m.set(id,T)}return T}
+  let T=RBG_C.m.get(id);if(!T){T=id==='carrot'?bakeCarrotBg(S):id==='ice'?bakeIceBg(S):id==='gp'?bakeGpBg(S):bakeAuroraBg(S);RBG_C.m.set(id,T)}return T}
 function drawRaceBgLayers(hy,shift){const cid=RACE.cid||'carrot';if(cid==='rainbow'){drawSpaceBg(hy,shift);return}const T=getRaceBg(cid);
   drawRangeL(T.far,hy+32-T.far.maxH,shift*.72+260,1);
   drawClouds(hy,shift,true);
@@ -6799,18 +7000,19 @@ const CANYON_PAL={
   carrot:{wall:[138,108,82],wall2:[104,78,58],lip:[234,245,232],abyss:[68,142,148],abyss2:[46,108,124],glint:'rgba(205,248,242,.38)',deep:[16,12,12],mist:[120,104,96]},
   ice:{wall:[92,148,192],wall2:[58,106,154],lip:[226,246,255],abyss:[28,72,114],abyss2:[18,46,82],glint:'rgba(180,235,255,.35)',deep:[4,10,26],mist:[70,110,150]},
   aurora:{wall:[68,78,124],wall2:[44,52,92],lip:[214,226,252],abyss:[24,30,68],abyss2:[16,20,52],glint:'rgba(164,244,220,.32)',deep:[3,3,14],mist:[60,70,120]},
+  gp:{wall:[178,104,78],wall2:[134,74,56],lip:[255,240,230],abyss:[92,58,70],abyss2:[64,40,52],glint:'rgba(255,214,190,.35)',deep:[20,10,12],mist:[150,100,96]},
   rainbow:{wall:[90,60,170],wall2:[60,36,130],lip:[255,236,255],abyss:[30,18,70],abyss2:[20,12,50],glint:'rgba(255,200,255,.3)',deep:[8,4,24],mist:[80,60,150]}
 };
 function raceDrawRoads(a,b,fog,tone,alt,jd){const A=raceRoads(a.z),B=raceRoads(b.z),GS=RACE.R.gaps;let inGap=false;for(let i=0;i<GS.length;i++)if(a.z>=GS[i].z0-.5&&b.z<=GS[i].z1+.5){inGap=true;break}   // 심연 위엔 도로 선 X
   if(RACE.R.C.rainbow){raceDrawRainbow(a,b,fog,A,B,jd);return}
   raceVoidSeg(a,b,fog,A,B,'cliff');
-  for(let q=0;q<A.length;q++){const ra=A[q],rb=B[Math.min(q,B.length-1)],l0=a.x+(ra.o-ra.w)*a.s,r0=a.x+(ra.o+ra.w)*a.s,l1=b.x+(rb.o-rb.w)*b.s,r1=b.x+(rb.o+rb.w)*b.s;
+  for(let q=0;q<A.length;q++){if(RACE.R.bridges.length&&bridgeH(q,a.z)>1.2&&bridgeH(q,b.z)>1.2)continue;const ra=A[q],rb=B[Math.min(q,B.length-1)],l0=a.x+(ra.o-ra.w)*a.s,r0=a.x+(ra.o+ra.w)*a.s,l1=b.x+(rb.o-rb.w)*b.s,r1=b.x+(rb.o+rb.w)*b.s;
     const rt=RACE_THEMES[RACE.cid];
     ctx.beginPath();ctx.moveTo(l0,a.sy+.5);ctx.lineTo(r0,a.sy+.5);ctx.lineTo(r1,b.sy);ctx.lineTo(l1,b.sy);ctx.closePath();ctx.fillStyle=tone(alt?(rt?rt.piste1:C_PISTE):(rt?rt.piste2:C_PISTE2));ctx.fill();
     if(jd<60&&!inGap){ctx.strokeStyle='rgba(146,184,218,'+(.2*(1-fog))+')';ctx.lineWidth=Math.max(.6,a.s*.06);ctx.beginPath();for(let f=-.85;f<=.86;f+=.17){ctx.moveTo(a.x+(ra.o+f*ra.w)*a.s,a.sy);ctx.lineTo(b.x+(rb.o+f*rb.w)*b.s,b.sy)}ctx.stroke()}}
   raceVoidSeg(a,b,fog,A,B,'gap');raceSurfSeg(a,b,fog);
   if(fog<.9&&!inGap){ctx.strokeStyle='rgba(132,168,204,'+(.32*(1-fog))+')';ctx.lineWidth=Math.max(1,a.s*.12);ctx.beginPath();
-    for(let q=0;q<A.length;q++){const ra=A[q],rb=B[Math.min(q,B.length-1)];ctx.moveTo(a.x+(ra.o-ra.w)*a.s,a.sy);ctx.lineTo(b.x+(rb.o-rb.w)*b.s,b.sy);ctx.moveTo(a.x+(ra.o+ra.w)*a.s,a.sy);ctx.lineTo(b.x+(rb.o+rb.w)*b.s,b.sy)}ctx.stroke()}}
+    for(let q=0;q<A.length;q++){if(RACE.R.bridges.length&&bridgeH(q,a.z)>1.2)continue;const ra=A[q],rb=B[Math.min(q,B.length-1)];ctx.moveTo(a.x+(ra.o-ra.w)*a.s,a.sy);ctx.lineTo(b.x+(rb.o-rb.w)*b.s,b.sy);ctx.moveTo(a.x+(ra.o+ra.w)*a.s,a.sy);ctx.lineTo(b.x+(rb.o+rb.w)*b.s,b.sy)}ctx.stroke()}}
 
 // 초경량 입체 협곡 & 낭떠러지: 절벽 립 오버행 + 수직 암벽/빙벽 스트라이프 + 협곡 바닥 물결/운해!
 function raceVoidSeg(a,b,fog,A,B,only){const R=RACE.R,L=R.segSurf.get(a.i);if(!L)return;const za=a.z,zb=b.z;
@@ -6868,7 +7070,7 @@ function raceSurfSeg(a,b,fog){const R=RACE.R,L=R.segSurf.get(a.i);if(!L)return;c
 }}
 
 // 고지대 숏컷 발판 렌더링 (위: 눈/얼음 발판+금빛 안내선 · 아래: 지지 기둥/절벽)
-const LEDGE_PAL={carrot:['#b08a62','#6e4d3a','#fffdf2'],ice:['#86c6ec','#3f7ba6','#eef9ff'],aurora:['#6c6fae','#34386c','#eef0ff']};   // [옆면 위, 옆면 아래, 눈 처마]
+const LEDGE_PAL={carrot:['#b08a62','#6e4d3a','#fffdf2'],ice:['#86c6ec','#3f7ba6','#eef9ff'],aurora:['#6c6fae','#34386c','#eef0ff'],gp:['#c8805e','#8a4e38','#fff6ee']};   // [옆면 위, 옆면 아래, 눈 처마]
 function drawLedgePiece(sp,a){const lg=sp.lg,za=sp.za,zb=sp.zb,ba=baseY(za),bb=baseY(zb);
   const xa=pisteCX(za)+roadOff(lg.road,za)+(lg.at||0),xb=pisteCX(zb)+roadOff(lg.road,zb)+(lg.at||0),w=lg.w,h=lg.h;
   const tlA=proj(xa-w,ba+h,za),trA=proj(xa+w,ba+h,za),tlB=proj(xb-w,bb+h,zb),trB=proj(xb+w,bb+h,zb);
@@ -6939,18 +7141,20 @@ function raceBuckets(put,jOf){const s=game,R=RACE.R,zMax=cam.z+VIEW_DIST-4;
   for(const p of RACE.projs)if(p.z>cam.z+.8&&p.z<zMax)put(jOf(p.z),{race:1,kind:'proj',p,z:p.z});
   for(const P of RACE.puddles)if(P.z>cam.z+.5&&P.z<zMax)put(jOf(P.z),{race:1,kind:'pud',P,z:P.z+1.5});
   // 고지대 숏컷 조각 (6m 스텝으로 가볍게!)
-  for(const lg of R.ledges){if(lg.z1<cam.z+.6||lg.z0>zMax)continue;const zs=Math.max(lg.z0,cam.z+.6),ze=Math.min(lg.z1,zMax);
+  gpBuckets(put,jOf);
+  for(const lg of R.ledges){if(lg.bridge||lg.z1<cam.z+.6||lg.z0>zMax)continue;const zs=Math.max(lg.z0,cam.z+.6),ze=Math.min(lg.z1,zMax);
     for(let za=zs;za<ze;za+=6){const zb=Math.min(ze,za+6),hasPad=R.pads.some(p=>p.h&&za<=p.z+7&&zb>=p.z);put(jOf(za),{race:1,kind:'ledge',lg,za,zb,z:zb,front:za===lg.z0,hasPad})}}
   // 동굴 터널 아치 링 (8m 스텝으로 가볍게!)
   for(const cv of R.caves){if(cv.z1<cam.z+1||cv.z0>zMax)continue;const zs=Math.max(cv.z0,cam.z+1),ze=Math.min(cv.z1,zMax),inside=cam.z+1>cv.z0;
     for(let za=zs;za<ze-.05;){const zb=Math.min(ze,(Math.floor(za/8+1e-6)+1)*8),j=jOf(za);put(j,{race:1,kind:'cave',cv,za,zb,z:za+.1,near:inside&&za===zs,portal:za<=cv.z0+2||zb>=cv.z1-2,lit:(Math.floor(za/8)&1)===0,j});za=zb}}
   if(R.len>cam.z+6&&R.len<zMax)put(jOf(R.len),{kind:'arch',a:{z:R.len,text:'FINISH',col:'#fff',finish:true},z:R.len});
   const z0=Math.ceil((cam.z+2)/18)*18,lamp=ENV.lamp>.03;if(!R.C.space)for(let z=z0;z<cam.z+(lamp?VIEW_DIST-10:240);z+=18){const c=pisteCX(z),j=jOf(z),far=z>cam.z+240,cl=R.cliffs.some(Cf=>z>=Cf.z0&&z<=Cf.z1);
-    for(const r of raceRoads(z))for(const sd of [-1,1]){const x=c+r.o+sd*(r.w+(cl?.6:1.2));if(raceDrop(z,x)&&!cl)continue;if(!far)put(j,{kind:'pole',x,z});if(lamp&&Math.round(z/18)%2===0&&!raceDrop(z,x+sd*1.8))put(j,{kind:'lamp',x:x+sd*1.8,z,side:sd,col:LAMP_COL[Math.round(z/36)%3],j})}}}
+    for(const r of raceRoads(z))if(!(R.bridges.length&&bridgeH(raceRoads(z).indexOf(r),z)>.6))for(const sd of [-1,1]){const x=c+r.o+sd*(r.w+(cl?.6:1.2));if(raceDrop(z,x)&&!cl)continue;if(!far)put(j,{kind:'pole',x,z});if(lamp&&Math.round(z/18)%2===0&&!raceDrop(z,x+sd*1.8))put(j,{kind:'lamp',x:x+sd*1.8,z,side:sd,col:LAMP_COL[Math.round(z/36)%3],j})}}}
 function raceDrawSprite(sp){const nf=clamp((sp.z-cam.z-1.5)/(CFG.camBack-1.5),0,1),fogA=(1-clamp((sp.z-cam.z-120)/(460/ENV.fogK),0,.78))*(1-smooth(.85,1,(sp.z-cam.z)/VIEW_DIST));
   if(sp.kind==='riv'){drawRival(sp.r);return}
   if(sp.kind==='ledge'){drawLedgePiece(sp,fogA);return}
   if(sp.kind==='cave'){drawCaveArch(sp,fogA);return}
+  if(sp.kind==='bridge'){drawBridgePiece(sp,fogA);return}if(sp.kind==='cwall'){drawCanyonWallPiece(sp,fogA);return}if(sp.kind==='grail'){drawGuardPiece(sp,fogA);return}if(sp.kind==='ring'){drawDashRing(sp.g,fogA);return}
   const a=fogA*(sp.kind==='pud'?1:Math.max(nf,.001));if(a<=.01)return;ctx.globalAlpha=a;
   if(sp.kind==='box')drawItemBox(sp.x,sp.z,sp.k);else if(sp.kind==='sign')drawSign(sp.o);else if(sp.kind==='proj'){if(sp.p.k==='cloud')drawCloudProj(sp.p);else drawGhostBoard(sp.p)}else if(sp.kind==='pud')drawPuddle(sp.P);
   ctx.globalAlpha=1}
@@ -6985,12 +7189,16 @@ function drawItemBox(x,z,k){const p=proj(x,baseY(z)+1.35,z),g=proj(x,baseY(z),z)
   ctx.restore()}
 
 // 치이카와 그림책풍 나무 화살표 이정표 (맵별 상단 장식: 당근밭=새싹 · 얼음=고드름 · 오로라=별)
-function drawSign(o){const z=o.z,x=pisteCX(z)+o.at,p=proj(x,baseY(z),z),q=proj(x,baseY(z)+3.5,z);if(!p||!q||p.s<.7)return;
+function signPlace(o){if(o._pl)return o._pl;const z=o.z,c=pisteCX(z),rr=raceRoads(z);let at=o.at||0,ban=null;
+  for(const r of rr){const d=at-r.o;if(Math.abs(d)<r.w-.3){if(Math.abs(d)>1.5)at=r.o+Math.sign(d)*(r.w+1.8);else if(!treeNear(z,c+at,2.5))ban={l:r.o-r.w-.6,r:r.o+r.w+.6};break}}
+  return o._pl={at,ban}}
+function drawSign(o){const z=o.z,PL=signPlace(o);if(PL.ban)return drawSignBanner(o,PL.ban);const x=pisteCX(z)+PL.at,p=proj(x,baseY(z),z),q=proj(x,baseY(z)+3.5,z);if(!p||!q||p.s<.16)return;ctx.save();ctx.globalAlpha*=smooth(.16,.4,p.s);try{drawSign0(o,p,q)}finally{ctx.restore()}}
+function drawSign0(o,p,q){
   const s=p.s,lw=Math.max(1.2,.09*s),cid=RACE.cid||'carrot';
   // 나무 기둥 + 눈/풀 밑둥
   ctx.fillStyle='#8c5838';ctx.strokeStyle='#3b2117';ctx.lineWidth=lw;
   const pw=Math.max(2,.28*s);ctx.fillRect(p.x-pw/2,q.y,pw,p.y-q.y);ctx.strokeRect(p.x-pw/2,q.y,pw,p.y-q.y);
-  const fs=Math.max(6,.58*s);ctx.font='900 '+fs+'px system-ui';const w=ctx.measureText(o.text).width+fs*1.4,h=fs*1.75;
+  const fs=Math.max(8,.72*s);ctx.font='900 '+fs+'px system-ui';const w=ctx.measureText(o.text).width+fs*1.4,h=fs*1.75;
   const x0=q.x-w/2,y0=q.y-h/2,rad=Math.max(3,h*.28);
   // 따뜻한 크림 나무 팻말 + 안쪽 띠
   roundRect(ctx,x0,y0,w,h,rad);ctx.fillStyle='#fbf4e4';ctx.fill();ctx.strokeStyle='#3b2117';ctx.lineWidth=Math.max(1.2,fs*.12);ctx.stroke();
@@ -7000,8 +7208,18 @@ function drawSign(o){const z=o.z,x=pisteCX(z)+o.at,p=proj(x,baseY(z),z),q=proj(x
     if(cid==='carrot'){ctx.fillStyle='#62c458';ctx.beginPath();ctx.ellipse(q.x-fs*.22,y0-fs*.22,fs*.26,fs*.14,-.5,0,Math.PI*2);ctx.ellipse(q.x+fs*.22,y0-fs*.22,fs*.26,fs*.14,.5,0,Math.PI*2);ctx.fill()}
     else if(cid==='ice'){ctx.fillStyle='#d4f4ff';ctx.beginPath();ctx.moveTo(x0+rad,y0);ctx.lineTo(x0+w-rad,y0);ctx.quadraticCurveTo(q.x,y0-fs*.32,x0+rad,y0);ctx.fill()}
     else{drawSparkle(ctx,q.x,y0-fs*.28,fs*.36,'#ffe878',.95)}}
-  if(fs>7){ctx.fillStyle='#3b2117';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(o.text,q.x,q.y+fs*.04);ctx.textBaseline='alphabetic';ctx.textAlign='left'}}
+  ctx.fillStyle='#3b2117';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(o.text,q.x,q.y+fs*.04);ctx.textBaseline='alphabetic';ctx.textAlign='left'}
 
+// 길 한가운데 표지판 = 양쪽 기둥에 거는 현수막 (몸이 기둥을 뚫고 지나가지 않게)
+function drawSignBanner(o,B){const z=o.z,c=pisteCX(z),y=baseY(z),H=5.6,pl=proj(c+B.l,y,z),pr=proj(c+B.r,y,z),tl=proj(c+B.l,y+H,z),tr=proj(c+B.r,y+H,z),m=proj(c+(B.l+B.r)/2,y+H-.9,z);
+  if(!pl||!pr||!tl||!tr||!m||pl.s<.16)return;ctx.save();ctx.globalAlpha*=smooth(.16,.4,pl.s);const s=m.s,lw=Math.max(1.2,.09*s),pw=Math.max(2,.28*s),cid=RACE.cid||'carrot';
+  ctx.fillStyle='#8c5838';ctx.strokeStyle='#3b2117';ctx.lineWidth=lw;for(const [P,T] of [[pl,tl],[pr,tr]]){ctx.fillRect(P.x-pw/2,T.y,pw,P.y-T.y);ctx.strokeRect(P.x-pw/2,T.y,pw,P.y-T.y)}
+  ctx.lineWidth=Math.max(1.5,.14*s);ctx.beginPath();ctx.moveTo(tl.x,tl.y);ctx.lineTo(tr.x,tr.y);ctx.stroke();
+  const fs=Math.max(8,.78*s);ctx.font='900 '+fs+'px system-ui';const w=ctx.measureText(o.text).width+fs*1.6,h=fs*1.8,x0=m.x-w/2,y0=m.y-h/2,rad=Math.max(3,h*.28);
+  ctx.strokeStyle='#3b2117';ctx.lineWidth=Math.max(1,.05*s);ctx.beginPath();ctx.moveTo(x0+w*.2,y0);ctx.lineTo(x0+w*.2,(tl.y+tr.y)/2);ctx.moveTo(x0+w*.8,y0);ctx.lineTo(x0+w*.8,(tl.y+tr.y)/2);ctx.stroke();
+  roundRect(ctx,x0,y0,w,h,rad);ctx.fillStyle='#fbf4e4';ctx.fill();ctx.strokeStyle='#3b2117';ctx.lineWidth=Math.max(1.2,fs*.12);ctx.stroke();
+  if(fs>8){roundRect(ctx,x0+2.5,y0+2.5,w-5,h-5,Math.max(2,rad-2));ctx.strokeStyle=cid==='ice'?'#7ac4ec':cid==='aurora'?'#a88ce6':cid==='rainbow'?'#ff8ad8':'#88c868';ctx.lineWidth=Math.max(1,fs*.07);ctx.stroke()}
+  ctx.fillStyle='#3b2117';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(o.text,m.x,m.y+fs*.04);ctx.textBaseline='alphabetic';ctx.textAlign='left';ctx.restore()}
 // 치이카와풍 유령보드: 라벤더 미니 보드 위에 탄 볼 빨간 꼬마 유령 + 별빛 잔상!
 function drawGhostBoard(pj){const y0=baseY(pj.z)+1.15+Math.sin(pj.t*8)*.16,p=proj(pj.x,y0,pj.z);if(!p||p.s<.4)return;const S=p.s;
   for(let i=3;i>=1;i--){const q=proj(pj.x,y0,pj.z-i*1.6);if(!q||q.s>S*2.5)continue;ctx.globalAlpha*=.85;ctx.fillStyle='rgba(220,200,255,'+(.22*(4-i)/3)+')';ctx.beginPath();ctx.ellipse(q.x,q.y,.85*q.s,.26*q.s,0,0,Math.PI*2);ctx.fill()}
